@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    画面を持たないホスト。mac や Linux で LLMCon を動かすためのもの。
+    Core だけを参照するので、Windows に固有のものは一切入らない。
+    出力先は websocket だけが使える（ViGEm は Windows 専用のため）。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>llmcon</AssemblyName>
+    <RootNamespace>CntlLevelConnection.Host</RootNamespace>
+    <Version>0.3.0</Version>
+    <Company>Kazutaka Kurihara</Company>
+    <Authors>Kazutaka Kurihara</Authors>
+    <Product>LLMCon Host</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CntlLevelConnection.Core\CntlLevelConnection.Core.csproj" />
+  </ItemGroup>
+
+</Project>

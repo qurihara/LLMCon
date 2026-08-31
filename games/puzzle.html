@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>落ち物パズル - CntlLevelConnection</title>
+<style>
+  html,body{margin:0;padding:0;background:#0e1016;color:#e6e8ef;font-family:"Segoe UI",Meiryo,system-ui,sans-serif;}
+  #wrap{max-width:900px;margin:0 auto;padding:12px 12px 30px;}
+  .top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
+  h1{font-size:20px;margin:0;color:#f4a340;letter-spacing:1px;}
+  a{color:#f4a340;text-decoration:none;font-size:14px;}
+  a:hover{text-decoration:underline;}
+  #stage{position:relative;width:820px;max-width:100%;margin:0 auto;}
+  canvas{display:block;background:#0e1016;border:1px solid #262b39;border-radius:8px;width:820px;height:500px;max-width:100%;}
+  .hint{color:#8a90a6;font-size:12px;margin-top:8px;line-height:1.7;}
+  .key{color:#f4a340;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="top">
+    <h1>落ち物パズル</h1>
+    <a href="index.html">&larr; ランチャー</a>
+  </div>
+  <div id="stage">
+    <canvas id="cv" width="820" height="500"></canvas>
+  </div>
+  <div class="hint">
+    操作 &nbsp; 移動：<span class="key">左右</span>（十字/左スティック） &nbsp; ソフトドロップ：<span class="key">下</span> &nbsp;
+    ハードドロップ：<span class="key">上 または X</span> &nbsp; 右回転：<span class="key">A</span> &nbsp; 左回転：<span class="key">B</span> &nbsp;
+    再開：<span class="key">Start</span> &nbsp; パッド切替：<span class="key">Back</span><br>
+    キーボード代替 &nbsp; 移動：矢印/WASD &nbsp; 回転：Z(=A)/X(=B) &nbsp; ハードドロップ：C(=X)/上 &nbsp; 再開：Enter(=Start)<br>
+    入力は WebSocket（LLMCon から直接受け取る経路）を優先し、届いていないあいだは Gamepad API を使います。
+    接続先は既定で <span class="key">ws://127.0.0.1:8777/vcon/ws</span>、<span class="key">?ws=ホスト:ポート</span> で変えられます。
+    いま使っている経路は右上の HUD に出ます。
+  </div>
+</div>
+<script>
+"use strict";
+(function(){
+  var cv = document.getElementById("cv");
+  var ctx = cv.getContext("2d");
+  var W = cv.width, H = cv.height;
+
+  // ---- レイアウト ----
+  var COLS = 10, ROWS = 20;
+  var CELL = 24;
+  var BOARD_W = COLS*CELL, BOARD_H = ROWS*CELL; // 240 x 480
+  var BOARD_X = 30, BOARD_Y = 10;
+
+  // ---- 色 ----
+  var AMBER = "#f4a340";
+  var PIECE_COLORS = {
+    I:"#4fd0e0", O:"#f4d03f", T:"#b06cf0", S:"#5fd06c",
+    Z:"#f0605f", J:"#5f7cf0", L:"#f4a340"
+  };
+
+  // ---- テトリミノ定義（各回転状態を4x4座標で）----
+  // 基本形をSRS風に回転生成する
+  var SHAPES = {
+    I: [[0,1],[1,1],[2,1],[3,1]],
+    O: [[1,0],[2,0],[1,1],[2,1]],
+    T: [[1,0],[0,1],[1,1],[2,1]],
+    S: [[1,0],[2,0],[0,1],[1,1]],
+    Z: [[0,0],[1,0],[1,1],[2,1]],
+    J: [[0,0],[0,1],[1,1],[2,1]],
+    L: [[2,0],[0,1],[1,1],[2,1]]
+  };
+  var TYPES = ["I","O","T","S","Z","J","L"];
+
+  // 4x4グリッド内で90度回転（時計回り）
+  function rotateCells(cells, dir){
+    // cells: array of [x,y] within 0..3
+    // Iとその他でボックスサイズが違うが4x4基準で回す
+    var out = [];
+    for(var i=0;i<cells.length;i++){
+      var x=cells[i][0], y=cells[i][1];
+      var nx,ny;
+      if(dir>0){ nx = 3-y; ny = x; }      // 時計回り
+      else     { nx = y;   ny = 3-x; }    // 反時計回り
+      out.push([nx,ny]);
+    }
+    return out;
+  }
+
+  // 各ピースの回転4状態をあらかじめ生成
+  var PIECE_STATES = {};
+  (function buildStates(){
+    for(var t=0;t<TYPES.length;t++){
+      var ty = TYPES[t];
+      var states = [];
+      var cur = SHAPES[ty].map(function(c){return [c[0],c[1]];});
+      // Oは回転で見た目不変だが一応4状態持たせる。回転はIも含め全て4x4基準で行う。
+      for(var r=0;r<4;r++){
+        states.push(cur.map(function(c){return [c[0],c[1]];}));
+        cur = rotateCells(cur, +1);
+      }
+      PIECE_STATES[ty] = states;
+    }
+  })();
+
+  // ---- ゲーム状態 ----
+  var grid, cur, over, paused;
+  var score, lines, level;
+  var dropTimer, dropInterval;
+  var nextType;
+  var lastTime = 0;
+
+  function newGrid(){
+    var g = [];
+    for(var y=0;y<ROWS;y++){ g.push(new Array(COLS).fill(null)); }
+    return g;
+  }
+
+  function randType(){ return TYPES[(Math.random()*TYPES.length)|0]; }
+
+  function spawn(){
+    var ty = nextType || randType();
+    nextType = randType();
+    cur = { type:ty, rot:0, x:3, y:0 };
+    // Iだけ初期yを合わせる（4x4基準なので3列目付近に出る）
+    if(collide(cur.x, cur.y, cur.rot)){
+      over = true; // 天井まで積んだ
+    }
+  }
+
+  function cellsOf(piece){
+    var st = PIECE_STATES[piece.type][piece.rot];
+    var out = [];
+    for(var i=0;i<st.length;i++){
+      out.push([piece.x + st[i][0], piece.y + st[i][1]]);
+    }
+    return out;
+  }
+
+  function collide(nx, ny, nrot){
+    var st = PIECE_STATES[cur.type][((nrot%4)+4)%4];
+    for(var i=0;i<st.length;i++){
+      var x = nx + st[i][0];
+      var y = ny + st[i][1];
+      if(x<0 || x>=COLS || y>=ROWS) return true;
+      if(y>=0 && grid[y][x]) return true;
+    }
+    return false;
+  }
+
+  function lockPiece(){
+    var cs = cellsOf(cur);
+    for(var i=0;i<cs.length;i++){
+      var x=cs[i][0], y=cs[i][1];
+      if(y>=0 && y<ROWS && x>=0 && x<COLS) grid[y][x] = cur.type;
+    }
+    clearLines();
+    spawn();
+  }
+
+  function clearLines(){
+    var cleared = 0;
+    for(var y=ROWS-1;y>=0;y--){
+      var full = true;
+      for(var x=0;x<COLS;x++){ if(!grid[y][x]){ full=false; break; } }
+      if(full){
+        grid.splice(y,1);
+        grid.unshift(new Array(COLS).fill(null));
+        cleared++;
+        y++; // 同じ行を再チェック
+      }
+    }
+    if(cleared>0){
+      var pts = [0,100,300,500,800][cleared] || (cleared*200);
+      score += pts * level;
+      lines += cleared;
+      level = 1 + Math.floor(lines/10);
+      dropInterval = Math.max(80, 800 - (level-1)*70);
+    }
+  }
+
+  function move(dx){
+    if(over||paused) return;
+    if(!collide(cur.x+dx, cur.y, cur.rot)){ cur.x+=dx; }
+  }
+
+  function softDrop(){
+    if(over||paused) return;
+    if(!collide(cur.x, cur.y+1, cur.rot)){ cur.y++; dropTimer=0; score+=1; }
+    else { lockPiece(); }
+  }
+
+  function hardDrop(){
+    if(over||paused) return;
+    var d=0;
+    while(!collide(cur.x, cur.y+1, cur.rot)){ cur.y++; d++; }
+    score += d*2;
+    lockPiece();
+    dropTimer = 0;
+  }
+
+  // 回転（簡易ウォールキック）
+  var KICKS = [0,-1,1,-2,2];
+  function rotate(dir){
+    if(over||paused) return;
+    var nrot = ((cur.rot+dir)%4+4)%4;
+    for(var k=0;k<KICKS.length;k++){
+      if(!collide(cur.x+KICKS[k], cur.y, nrot)){
+        cur.x += KICKS[k];
+        cur.rot = nrot;
+        return;
+      }
+    }
+  }
+
+  function restart(){
+    grid = newGrid();
+    score=0; lines=0; level=1;
+    dropInterval=800; dropTimer=0;
+    over=false; paused=false;
+    nextType = randType();
+    spawn();
+  }
+
+  // ============================================================
+  //  ゲームパッド入力
+  // ============================================================
+  var pads = {};            // index -> gamepad id 表示用
+  var activeIndex = null;   // 操作対象のパッド index
+  var prev = null;          // 前フレームの生入力（エッジ検出用）
+  var haveSeenPad = false;
+
+  // ============================================================
+  //  WebSocket 経由の入力（LLMCon から直接届く）
+  // ============================================================
+  // LLMCon は {"t":"pad","buttons":[...],"lx":..,"ly":..,"rx":..,"ry":..,"lt":..,"rt":..}
+  // という JSON を送ってくる。同じ口には別種の配信も流れるので t==="pad" だけを扱う。
+  var WS_FRESH_MS = 2000;   // この時間内に pad が届いていれば WebSocket を優先する
+  var wsSock = null;
+  var wsConnected = false;
+  var wsRetryTimer = null;
+  var wsLastPadAt = 0;      // 最後に pad を受け取った時刻（performance 相当の Date.now()）
+  var wsPad = {             // 最後に受け取った状態
+    btn: {}, lx:0, ly:0, rx:0, ry:0, lt:0, rt:0
+  };
+
+  // 接続先は (a) ?ws=ホスト:ポート → (b) location.host → (c) 既定 127.0.0.1:8777 の順で決める。
+  function wsUrl(){
+    var host = "";
+    try {
+      var m = /[?&]ws=([^&#]+)/.exec(location.search || "");
+      if(m && m[1]){
+        // 壊れた％エンコードでも既定へ落ちるようにする（ここで例外を外へ出さない）
+        try { host = decodeURIComponent(m[1]); } catch(e){ host = m[1]; }
+      }
+    } catch(e){ host = ""; }
+    if(!host){ try { host = location.host || ""; } catch(e){ host = ""; } }
+    if(!host){ host = "127.0.0.1:8777"; }
+    return "ws://" + host + "/vcon/ws";
+  }
+
+  // 受け取った数を安全な範囲に収める（数でない値や NaN は 0 とみなす）
+  function num(v){
+    var n = (typeof v === "number") ? v : parseFloat(v);
+    return isFinite(n) ? n : 0;
+  }
+  function clamp1(v){ var n = num(v); return n < -1 ? -1 : (n > 1 ? 1 : n); }
+  function clamp01(v){ var n = num(v); return n < 0 ? 0 : (n > 1 ? 1 : n); }
+
+  function wsScheduleRetry(){
+    if(wsRetryTimer) return;
+    wsRetryTimer = setTimeout(function(){ wsRetryTimer = null; wsConnect(); }, 3000);
+  }
+
+  function wsConnect(){
+    if(typeof WebSocket === "undefined") return;
+    var sock;
+    try { sock = new WebSocket(wsUrl()); }
+    catch(e){ wsScheduleRetry(); return; }
+    wsSock = sock;
+    sock.onopen = function(){ if(wsSock===sock) wsConnected = true; };
+    sock.onclose = function(){
+      if(wsSock===sock){ wsConnected = false; wsSock = null; wsScheduleRetry(); }
+    };
+    sock.onerror = function(){ try{ sock.close(); }catch(e){} };
+    sock.onmessage = function(ev){
+      var d = ev.data;
+      if(typeof d !== "string") return;   // Blob / ArrayBuffer は扱わない
+      var text = d.trim();
+      if(!text || text.charAt(0) !== "{") return;   // "reload" などの素の文字列は無視
+      var msg;
+      try { msg = JSON.parse(text); } catch(e){ return; }   // 壊れた JSON も無視
+      if(!msg || msg.t !== "pad") return;   // miclvl などの別種の配信は無視
+      var b = {};
+      if(Array.isArray(msg.buttons)){
+        for(var i=0;i<msg.buttons.length;i++){
+          if(typeof msg.buttons[i] === "string"){ b[msg.buttons[i]] = true; }
+        }
+      }
+      wsPad.btn = b;
+      wsPad.lx = clamp1(msg.lx); wsPad.ly = clamp1(msg.ly);
+      wsPad.rx = clamp1(msg.rx); wsPad.ry = clamp1(msg.ry);
+      wsPad.lt = clamp01(msg.lt); wsPad.rt = clamp01(msg.rt);
+      wsLastPadAt = Date.now();
+      haveSeenPad = true;
+    };
+  }
+
+  function wsFresh(){ return (Date.now() - wsLastPadAt) < WS_FRESH_MS; }
+
+  wsConnect();
+
+  window.addEventListener("gamepadconnected", function(e){
+    pads[e.gamepad.index] = e.gamepad.id;
+    haveSeenPad = true;
+    if(activeIndex===null) activeIndex = e.gamepad.index;
+  });
+  window.addEventListener("gamepaddisconnected", function(e){
+    delete pads[e.gamepad.index];
+    if(activeIndex===e.gamepad.index){
+      var keys = Object.keys(pads);
+      activeIndex = keys.length? parseInt(keys[0],10) : null;
+    }
+  });
+
+  function getPads(){
+    var gp = navigator.getGamepads ? navigator.getGamepads() : [];
+    return gp || [];
+  }
+
+  // あるパッドが「はっきりした入力」を出しているか判定する。
+  // 戻り値: 2=ボタン押下（ドリフトしない, 優先）, 1=スティックを大きく倒した, 0=入力なし
+  function padActivity(g){
+    if(!g) return 0;
+    if(g.buttons){
+      for(var b=0;b<16 && b<g.buttons.length;b++){
+        if(g.buttons[b] && g.buttons[b].pressed) return 2;
+      }
+    }
+    if(g.axes){
+      var ax = g.axes[0]||0, ay = g.axes[1]||0;
+      if(Math.abs(ax)>0.6 || Math.abs(ay)>0.6) return 1;
+    }
+    return 0;
+  }
+
+  // 毎フレーム全パッドを走査し、はっきり入力しているパッドへ操作対象を自動追従させる。
+  // ボタン押下（activity=2）はスティック（activity=1）より優先する。
+  function pickActivePad(list){
+    var best = null, bestScore = 0;
+    for(var i=0;i<list.length;i++){
+      var act = padActivity(list[i]);
+      if(act>bestScore){ bestScore = act; best = i; }
+    }
+    if(best!==null){ activeIndex = best; haveSeenPad = true; }
+  }
+
+  // 十字/スティックから移動方向を決める共通処理
+  function fillMove(s){
+    s.moveLeft  = s.left  || s.ax < -0.4;
+    s.moveRight = s.right || s.ax >  0.4;
+    s.moveDown  = s.down  || s.ay >  0.4;
+    s.moveUp    = s.up    || s.ay < -0.4;
+  }
+
+  // 生の入力状態を1つのオブジェクトにまとめる（HUDとゲーム両方で使う）
+  function readState(){
+    var s = {
+      connected:false, id:"なし", src:"gamepad",
+      A:false,B:false,X:false,Y:false,LB:false,RB:false,
+      LT:0,RT:0, up:false,down:false,left:false,right:false,
+      back:false, start:false, ax:0, ay:0,
+      moveLeft:false, moveRight:false, moveDown:false, moveUp:false
+    };
+
+    // ---- WebSocket 優先：直近 WS_FRESH_MS 以内に pad が届いていればそちらを使う ----
+    if(wsFresh()){
+      var b = wsPad.btn;
+      s.src = "ws";
+      s.connected = true;
+      s.id = "LLMCon (WebSocket)";
+      s.A=!!b.A; s.B=!!b.B; s.X=!!b.X; s.Y=!!b.Y;
+      s.LB=!!b.LB; s.RB=!!b.RB;
+      s.LT=wsPad.lt; s.RT=wsPad.rt;
+      s.back=!!b.Back; s.start=!!b.Start;
+      s.up=!!b.DUp; s.down=!!b.DDown; s.left=!!b.DLeft; s.right=!!b.DRight;
+      // ly は上が正。ゲーム内の ay は Gamepad API に合わせて下が正なので符号を反転する。
+      s.ax = wsPad.lx; s.ay = -wsPad.ly;
+      fillMove(s);
+      return s;   // WS 使用中は自動追従を働かせない（経路が揺れないように）
+    }
+
+    var list = getPads();
+    // 接続中のパッドを列挙し直す（ポーリングでも拾う）
+    for(var i=0;i<list.length;i++){
+      if(list[i]){ pads[i]=list[i].id; if(activeIndex===null){activeIndex=i;} haveSeenPad=true; }
+    }
+    // 今まさに入力しているパッドへ自動追従（ボタン優先、スティックは大きく倒したときのみ）。
+    // 手動選択(Back)の後でも、別パッドがボタンを押せばそちらへ切り替わる。
+    pickActivePad(list);
+    if(activeIndex!==null && list[activeIndex]){
+      var g = list[activeIndex];
+      s.connected=true; s.id=g.id;
+      function bp(n){ return g.buttons[n] && g.buttons[n].pressed; }
+      function bv(n){ return g.buttons[n] ? g.buttons[n].value : 0; }
+      s.A=bp(0); s.B=bp(1); s.X=bp(2); s.Y=bp(3);
+      s.LB=bp(4); s.RB=bp(5);
+      s.LT=bv(6); s.RT=bv(7);
+      s.back=bp(8); s.start=bp(9);
+      s.up=bp(12); s.down=bp(13); s.left=bp(14); s.right=bp(15);
+      s.ax = g.axes[0]||0; s.ay = g.axes[1]||0;
+      // 十字 or 左スティック（|軸|>0.4）で方向
+      fillMove(s);
+    }
+    return s;
+  }
+
+  // ============================================================
+  //  キーボード入力（代替）
+  // ============================================================
+  var kb = {left:false,right:false,down:false,up:false,A:false,B:false,X:false,Y:false,start:false};
+  var kbEdge = {A:false,B:false,X:false,left:false,right:false,up:false,start:false,down:false};
+  var kbPrev = {};
+  window.addEventListener("keydown", function(e){
+    var k=e.key.toLowerCase();
+    if(k==="arrowleft"||k==="a"){ kb.left=true; }
+    else if(k==="arrowright"||k==="d"){ kb.right=true; }
+    else if(k==="arrowdown"||k==="s"){ kb.down=true; }
+    else if(k==="arrowup"||k==="w"){ kb.up=true; }
+    else if(k==="z"){ kb.A=true; }
+    else if(k==="x"){ kb.B=true; }
+    else if(k==="c"){ kb.X=true; }
+    else if(k==="v"){ kb.Y=true; }
+    else if(k==="enter"){ kb.start=true; }
+    else return;
+    e.preventDefault();
+  });
+  window.addEventListener("keyup", function(e){
+    var k=e.key.toLowerCase();
+    if(k==="arrowleft"||k==="a"){ kb.left=false; }
+    else if(k==="arrowright"||k==="d"){ kb.right=false; }
+    else if(k==="arrowdown"||k==="s"){ kb.down=false; }
+    else if(k==="arrowup"||k==="w"){ kb.up=false; }
+    else if(k==="z"){ kb.A=false; }
+    else if(k==="x"){ kb.B=false; }
+    else if(k==="c"){ kb.X=false; }
+    else if(k==="v"){ kb.Y=false; }
+    else if(k==="enter"){ kb.start=false; }
+  });
+
+  // 自動リピート用（左右移動のホールド）
+  var dasTimer=0, dasDir=0;
+  var DAS_DELAY=170, DAS_REPEAT=55;
+
+  // ============================================================
+  //  メインループ
+  // ============================================================
+  function edge(now, was){ return now && !was; }
+
+  function update(dt){
+    var s = readState();
+
+    // ---- パッド切替（Back の押した瞬間） ----
+    // WebSocket 経路のあいだはパッドの選択そのものが無関係なので切替は行わない
+    var backEdge = (s.src!=="ws") && (prev ? edge(s.back, prev.back) : s.back);
+    if(backEdge){
+      var keys = Object.keys(pads).map(function(k){return parseInt(k,10);}).sort(function(a,b){return a-b;});
+      if(keys.length>0){
+        var idx = keys.indexOf(activeIndex);
+        activeIndex = keys[(idx+1)%keys.length];
+      }
+    }
+
+    // ---- Start / Enter：再開 ----
+    var startEdge = (prev ? edge(s.start, prev.start) : s.start) || edge(kb.start, kbPrev.start);
+    if(startEdge){ restart(); }
+
+    if(!over && !paused){
+      // ---- 回転（エッジ検出）----
+      var aEdge = (prev? edge(s.A, prev.A):s.A) || edge(kb.A, kbPrev.A);
+      var bEdge = (prev? edge(s.B, prev.B):s.B) || edge(kb.B, kbPrev.B);
+      if(aEdge) rotate(+1);   // A = 右回転（時計回り）
+      if(bEdge) rotate(-1);   // B = 左回転
+
+      // ---- ハードドロップ：上 または X（エッジ）----
+      var xEdge = (prev? edge(s.X, prev.X):s.X) || edge(kb.X, kbPrev.X);
+      var upEdge = (prev? edge(s.moveUp, prev.moveUp):s.moveUp) || edge(kb.up, kbPrev.up);
+      if(xEdge || upEdge) hardDrop();
+
+      // ---- 左右移動（押した瞬間＋DAS）----
+      var wantLeft  = s.moveLeft  || kb.left;
+      var wantRight = s.moveRight || kb.right;
+      var lEdge = (prev? edge(s.moveLeft, prev.moveLeft):s.moveLeft) || edge(kb.left, kbPrev.left);
+      var rEdge = (prev? edge(s.moveRight, prev.moveRight):s.moveRight) || edge(kb.right, kbPrev.right);
+      if(lEdge){ move(-1); dasDir=-1; dasTimer=-DAS_DELAY; }
+      if(rEdge){ move(+1); dasDir=+1; dasTimer=-DAS_DELAY; }
+      if(wantLeft && dasDir===-1){
+        dasTimer += dt;
+        while(dasTimer>=DAS_REPEAT){ move(-1); dasTimer-=DAS_REPEAT; }
+      } else if(wantRight && dasDir===+1){
+        dasTimer += dt;
+        while(dasTimer>=DAS_REPEAT){ move(+1); dasTimer-=DAS_REPEAT; }
+      } else {
+        if(!wantLeft && !wantRight){ dasDir=0; dasTimer=0; }
+      }
+
+      // ---- ソフトドロップ（ホールド）----
+      var wantDown = s.moveDown || kb.down;
+      if(wantDown){
+        dropTimer += dt*8; // 加速
+      }
+
+      // ---- 自動落下 ----
+      dropTimer += dt;
+      if(dropTimer >= dropInterval){
+        dropTimer = 0;
+        if(!collide(cur.x, cur.y+1, cur.rot)){ cur.y++; }
+        else { lockPiece(); }
+      }
+    }
+
+    // 前フレーム保存（エッジ検出用）
+    prev = s;
+    kbPrev = {A:kb.A,B:kb.B,X:kb.X,Y:kb.Y,left:kb.left,right:kb.right,up:kb.up,down:kb.down,start:kb.start};
+    return s;
+  }
+
+  // ============================================================
+  //  描画
+  // ============================================================
+  function drawCell(px, py, color, ghost){
+    if(ghost){
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(px+2, py+2, CELL-4, CELL-4);
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.fillStyle = color;
+      ctx.fillRect(px+1, py+1, CELL-2, CELL-2);
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.fillRect(px+1, py+1, CELL-2, 3);
+    }
+  }
+
+  function render(s){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = "#0e1016";
+    ctx.fillRect(0,0,W,H);
+
+    // 盤面背景
+    ctx.fillStyle = "#12151f";
+    ctx.fillRect(BOARD_X, BOARD_Y, BOARD_W, BOARD_H);
+    // グリッド線
+    ctx.strokeStyle = "#1c2130";
+    ctx.lineWidth = 1;
+    for(var x=0;x<=COLS;x++){
+      ctx.beginPath(); ctx.moveTo(BOARD_X+x*CELL+0.5, BOARD_Y); ctx.lineTo(BOARD_X+x*CELL+0.5, BOARD_Y+BOARD_H); ctx.stroke();
+    }
+    for(var y=0;y<=ROWS;y++){
+      ctx.beginPath(); ctx.moveTo(BOARD_X, BOARD_Y+y*CELL+0.5); ctx.lineTo(BOARD_X+BOARD_W, BOARD_Y+y*CELL+0.5); ctx.stroke();
+    }
+    // 枠
+    ctx.strokeStyle = "#39405a";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(BOARD_X-1, BOARD_Y-1, BOARD_W+2, BOARD_H+2);
+
+    // 固定ブロック
+    for(var gy=0;gy<ROWS;gy++){
+      for(var gx=0;gx<COLS;gx++){
+        if(grid[gy][gx]){
+          drawCell(BOARD_X+gx*CELL, BOARD_Y+gy*CELL, PIECE_COLORS[grid[gy][gx]], false);
+        }
+      }
+    }
+
+    // ゴースト（落下予測）
+    if(!over){
+      var gyoff=0;
+      while(!collide(cur.x, cur.y+gyoff+1, cur.rot)) gyoff++;
+      var gc = cellsOf(cur);
+      for(var i=0;i<gc.length;i++){
+        var cx=gc[i][0], cy=gc[i][1]+gyoff;
+        if(cy>=0) drawCell(BOARD_X+cx*CELL, BOARD_Y+cy*CELL, PIECE_COLORS[cur.type], true);
+      }
+      // 現在のピース
+      var cc = cellsOf(cur);
+      for(var j=0;j<cc.length;j++){
+        var ccx=cc[j][0], ccy=cc[j][1];
+        if(ccy>=0) drawCell(BOARD_X+ccx*CELL, BOARD_Y+ccy*CELL, PIECE_COLORS[cur.type], false);
+      }
+    }
+
+    // ---- 右側の情報パネル ----
+    var PX = BOARD_X + BOARD_W + 30;
+    ctx.textBaseline = "top";
+
+    // NEXT
+    ctx.fillStyle = AMBER;
+    ctx.font = "bold 15px 'Segoe UI',Meiryo,sans-serif";
+    ctx.fillText("NEXT", PX, 14);
+    ctx.strokeStyle = "#39405a";
+    ctx.lineWidth = 1;
+    var nbx=PX, nby=36, nbs=4*CELL*0.7;
+    ctx.fillStyle="#12151f";
+    ctx.fillRect(nbx, nby, nbs, nbs);
+    ctx.strokeRect(nbx, nby, nbs, nbs);
+    (function(){
+      var st = PIECE_STATES[nextType][0];
+      var cell = CELL*0.7;
+      for(var i=0;i<st.length;i++){
+        var x=st[i][0], y=st[i][1];
+        ctx.fillStyle = PIECE_COLORS[nextType];
+        ctx.fillRect(nbx + x*cell +1, nby + y*cell +1, cell-2, cell-2);
+      }
+    })();
+
+    // スコア類
+    ctx.fillStyle="#e6e8ef";
+    ctx.font="13px 'Segoe UI',Meiryo,sans-serif";
+    var iy = nby+nbs+18;
+    ctx.fillStyle=AMBER; ctx.fillText("SCORE", PX, iy);
+    ctx.fillStyle="#e6e8ef"; ctx.font="bold 20px 'Segoe UI',Meiryo,sans-serif";
+    ctx.fillText(String(score), PX, iy+16);
+    ctx.font="13px 'Segoe UI',Meiryo,sans-serif";
+    ctx.fillStyle=AMBER; ctx.fillText("LINES", PX, iy+46);
+    ctx.fillStyle="#e6e8ef"; ctx.fillText(String(lines), PX+50, iy+46);
+    ctx.fillStyle=AMBER; ctx.fillText("LEVEL", PX, iy+66);
+    ctx.fillStyle="#e6e8ef"; ctx.fillText(String(level), PX+50, iy+66);
+
+    // ---- HUD（右上）：ゲームパッドの生状態 ----
+    drawHUD(s);
+
+    // ---- パッド未検出メッセージ ----
+    if(!haveSeenPad){
+      ctx.fillStyle="rgba(14,16,22,0.82)";
+      ctx.fillRect(BOARD_X, BOARD_Y+BOARD_H/2-40, BOARD_W, 80);
+      ctx.fillStyle=AMBER;
+      ctx.font="bold 14px 'Segoe UI',Meiryo,sans-serif";
+      ctx.textAlign="center";
+      ctx.fillText("コントローラのボタンを", BOARD_X+BOARD_W/2, BOARD_Y+BOARD_H/2-20);
+      ctx.fillText("押してください", BOARD_X+BOARD_W/2, BOARD_Y+BOARD_H/2-2);
+      ctx.fillStyle="#8a90a6";
+      ctx.font="11px 'Segoe UI',sans-serif";
+      ctx.fillText("press a controller button", BOARD_X+BOARD_W/2, BOARD_Y+BOARD_H/2+18);
+      ctx.textAlign="left";
+    }
+
+    // ---- ゲームオーバー ----
+    if(over){
+      ctx.fillStyle="rgba(14,16,22,0.8)";
+      ctx.fillRect(BOARD_X, BOARD_Y, BOARD_W, BOARD_H);
+      ctx.fillStyle="#f0605f";
+      ctx.font="bold 26px 'Segoe UI',Meiryo,sans-serif";
+      ctx.textAlign="center";
+      ctx.fillText("ゲームオーバー", BOARD_X+BOARD_W/2, BOARD_Y+BOARD_H/2-30);
+      ctx.fillStyle=AMBER;
+      ctx.font="14px 'Segoe UI',Meiryo,sans-serif";
+      ctx.fillText("Start / Enter で再開", BOARD_X+BOARD_W/2, BOARD_Y+BOARD_H/2+6);
+      ctx.textAlign="left";
+    }
+  }
+
+  // ---- HUD：右上の入力可視化 ----
+  function drawHUD(s){
+    var hx = W - 250, hy = 8, hw = 240, hh = 158;
+    ctx.fillStyle="#141826";
+    ctx.strokeStyle="#39405a";
+    ctx.lineWidth=1;
+    ctx.fillRect(hx, hy, hw, hh);
+    ctx.strokeRect(hx+0.5, hy+0.5, hw, hh);
+
+    ctx.textBaseline="top";
+    ctx.textAlign="left";
+    ctx.fillStyle=AMBER;
+    ctx.font="bold 11px 'Segoe UI',sans-serif";
+    ctx.fillText("入力モニタ (HUD)", hx+8, hy+6);
+
+    // 経路表示（WebSocket / Gamepad API）
+    var usingWs = (s.src==="ws");
+    ctx.font="bold 10px 'Segoe UI',sans-serif";
+    ctx.textAlign="right";
+    ctx.fillStyle = usingWs ? "#5fd06c" : "#8a90a6";
+    ctx.fillText(usingWs ? "経路: WebSocket" : "経路: Gamepad API", hx+hw-8, hy+7);
+    ctx.textAlign="left";
+
+    // パッドid
+    ctx.fillStyle="#8a90a6";
+    ctx.font="10px 'Segoe UI',sans-serif";
+    var idText = s.id;
+    if(idText.length>30) idText = idText.slice(0,29)+"…";
+    if(usingWs){
+      ctx.fillStyle = wsConnected ? "#5fd06c" : "#f0605f";
+      ctx.fillText("LLMCon: "+(wsConnected?"接続中":"切断"), hx+8, hy+22);
+    } else {
+      var idxText = (activeIndex===null ? "-" : activeIndex);
+      ctx.fillText("操作対象 #"+idxText+": "+idText, hx+8, hy+22);
+    }
+
+    // ボタンランプ
+    var labels = ["A","B","X","Y","LB","RB"];
+    var vals = [s.A,s.B,s.X,s.Y,s.LB,s.RB];
+    var bx = hx+10, by = hy+40;
+    for(var i=0;i<labels.length;i++){
+      var lx = bx + i*38;
+      lamp(lx, by, 30, 18, labels[i], vals[i]);
+    }
+    // トリガー（アナログ）
+    var ty = by+26;
+    trigBar(hx+10, ty, 108, 14, "LT", s.LT);
+    trigBar(hx+122, ty, 108, 14, "RT", s.RT);
+
+    // 十字
+    var dy = ty+24;
+    var dcx = hx+40, dcy = dy+18;
+    dpadArrow(dcx, dcy-14, "up", s.up);
+    dpadArrow(dcx, dcy+14, "down", s.down);
+    dpadArrow(dcx-16, dcy, "left", s.left);
+    dpadArrow(dcx+16, dcy, "right", s.right);
+    ctx.fillStyle="#8a90a6"; ctx.font="9px 'Segoe UI',sans-serif";
+    ctx.fillText("D-Pad", dcx-14, dcy+26);
+
+    // 左スティックの位置
+    var stx = hx+140, sty = dy+18, sr=22;
+    ctx.strokeStyle="#39405a";
+    ctx.beginPath(); ctx.arc(stx, sty, sr, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle="#252b3d";
+    ctx.beginPath(); ctx.moveTo(stx-sr,sty); ctx.lineTo(stx+sr,sty); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(stx,sty-sr); ctx.lineTo(stx,sty+sr); ctx.stroke();
+    var dotx = stx + (s.ax||0)*sr, doty = sty + (s.ay||0)*sr;
+    var active = (Math.abs(s.ax)>0.4||Math.abs(s.ay)>0.4);
+    ctx.fillStyle = active ? AMBER : "#72808f";
+    ctx.beginPath(); ctx.arc(dotx, doty, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle="#8a90a6"; ctx.font="9px 'Segoe UI',sans-serif";
+    ctx.fillText("L-Stick", stx-14, sty+26);
+
+    // 接続パッド一覧＋切替
+    ctx.fillStyle="#8a90a6";
+    ctx.font="9px 'Segoe UI',sans-serif";
+    var listText;
+    if(usingWs){
+      listText = "LLMCon から直接受信中（Gamepad API は使っていません）";
+    } else {
+      var keys = Object.keys(pads).map(function(k){return parseInt(k,10);}).sort(function(a,b){return a-b;});
+      listText = keys.length ? ("パッド:"+keys.map(function(k){return (k===activeIndex?"["+k+"]":k);}).join(" ")+"  Backで切替") : "パッド:なし";
+      if(wsConnected) listText += "  / WS接続済(pad待ち)";
+    }
+    ctx.fillText(listText, hx+8, hy+hh-14);
+  }
+
+  function lamp(x,y,w,h,label,on){
+    ctx.fillStyle = on ? AMBER : "#222838";
+    ctx.strokeStyle = on ? "#ffd08a" : "#39405a";
+    ctx.lineWidth=1;
+    ctx.fillRect(x,y,w,h);
+    ctx.strokeRect(x+0.5,y+0.5,w,h);
+    ctx.fillStyle = on ? "#0e1016" : "#8a90a6";
+    ctx.font="bold 10px 'Segoe UI',sans-serif";
+    ctx.textAlign="center";
+    ctx.fillText(label, x+w/2, y+4);
+    ctx.textAlign="left";
+  }
+
+  function trigBar(x,y,w,h,label,val){
+    ctx.fillStyle="#222838"; ctx.strokeStyle="#39405a"; ctx.lineWidth=1;
+    ctx.fillRect(x,y,w,h); ctx.strokeRect(x+0.5,y+0.5,w,h);
+    ctx.fillStyle=AMBER;
+    ctx.fillRect(x, y, w*Math.max(0,Math.min(1,val)), h);
+    ctx.fillStyle = val>0.05 ? "#0e1016" : "#8a90a6";
+    ctx.font="bold 9px 'Segoe UI',sans-serif";
+    ctx.textAlign="left";
+    ctx.fillText(label+" "+val.toFixed(2), x+3, y+3);
+  }
+
+  function dpadArrow(cx,cy,dir,on){
+    ctx.fillStyle = on ? AMBER : "#2a3145";
+    ctx.beginPath();
+    var s=6;
+    if(dir==="up"){ ctx.moveTo(cx,cy-s); ctx.lineTo(cx-s,cy+s); ctx.lineTo(cx+s,cy+s); }
+    else if(dir==="down"){ ctx.moveTo(cx,cy+s); ctx.lineTo(cx-s,cy-s); ctx.lineTo(cx+s,cy-s); }
+    else if(dir==="left"){ ctx.moveTo(cx-s,cy); ctx.lineTo(cx+s,cy-s); ctx.lineTo(cx+s,cy+s); }
+    else { ctx.moveTo(cx+s,cy); ctx.lineTo(cx-s,cy-s); ctx.lineTo(cx-s,cy+s); }
+    ctx.closePath(); ctx.fill();
+  }
+
+  // ============================================================
+  //  ループ起動
+  // ============================================================
+  function loop(t){
+    var dt = t - lastTime;
+    if(!lastTime) dt = 16;
+    lastTime = t;
+    if(dt>100) dt=100; // タブ復帰などで飛ばない
+    var s = update(dt);
+    render(s);
+    requestAnimationFrame(loop);
+  }
+
+  restart();
+  requestAnimationFrame(loop);
+  // 測定用の出口。研究で改変の効き方を機械的に測るために置いてある。遊びには影響しない。
+  window.__probe = {
+    game: "puzzle",
+    get score(){ return score; },
+    get lines(){ return lines; },
+    get level(){ return level; },
+    get over(){ return over; },
+    get playing(){ return !over && !paused; },
+    restart: function(){ restart(); },
+  };
+})();
+</script>
+</body>
+</html>

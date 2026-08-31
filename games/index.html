@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ゲーム集 - CntlLevelConnection</title>
+<style>
+  :root {
+    --bg: #0e1016;
+    --amber: #f4a340;
+    --text: #e6e8ee;
+    --dim: #aab0be;
+    --panel: #14171f;
+    --panel2: #1a1e28;
+    --line: #23262f;
+    --line2: #2c313d;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+    line-height: 1.7;
+  }
+  #wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 22px 16px 48px;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  header h1 {
+    font-size: 24px;
+    margin: 0;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+  }
+  header h1 .amber { color: var(--amber); }
+  header .sub {
+    color: var(--dim);
+    font-size: 13px;
+  }
+  .intro {
+    margin: 14px 0 6px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--amber);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13.5px;
+    color: var(--dim);
+  }
+  .intro p { margin: 0 0 10px; }
+  .intro p:last-child { margin-bottom: 0; }
+  .intro b { color: var(--text); }
+  .intro a { color: var(--amber); text-decoration: none; word-break: break-all; }
+  .intro a:hover { text-decoration: underline; }
+  .intro code {
+    background: #1c2029;
+    border: 1px solid var(--line2);
+    border-radius: 4px;
+    padding: 0 5px;
+    color: var(--amber);
+    font-size: 12px;
+  }
+  .section-label {
+    margin: 26px 0 10px;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--amber);
+    font-weight: 700;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 14px;
+  }
+  a.card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    transition: border-color .12s, background .12s, transform .12s;
+  }
+  a.card:hover {
+    border-color: var(--amber);
+    background: var(--panel2);
+    transform: translateY(-2px);
+  }
+  a.card:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+  .card .title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .card .icon {
+    color: var(--amber);
+    font-size: 18px;
+    line-height: 1;
+  }
+  .card .name {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .card .genre {
+    font-size: 12px;
+    color: var(--dim);
+    margin-bottom: 10px;
+  }
+  .card .ctrl {
+    font-size: 12px;
+    color: var(--dim);
+    line-height: 1.75;
+  }
+  .card .k {
+    display: inline-block;
+    background: #1c2029;
+    border: 1px solid var(--line2);
+    border-radius: 4px;
+    padding: 0 6px;
+    color: var(--amber);
+    font-size: 11.5px;
+    margin: 0 1px;
+  }
+  .card .go {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--amber);
+    font-weight: 600;
+  }
+  footer {
+    margin-top: 32px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    color: #6b7280;
+    font-size: 11.5px;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>ゲーム<span class="amber">集</span></h1>
+    <span class="sub">CntlLevelConnection — 仮想コントローラ動作確認用</span>
+  </header>
+
+  <div class="intro">
+    <p>これは <b>LLMCon / KuriCon</b> の仮想コントローラの効果を試すためのゲーム集です。反転・遅延・連打・アナログ変換・マイクなどの改変を掛けると、ゲーム内の右上の入力表示（HUD）と操作感が変わるので、その違いを体験できます。</p>
+    <p><b>入力がゲームに届く経路は2つあります。</b>どちらを使っているかは、各ゲームの右上の HUD に出ます。</p>
+  </div>
+
+  <div class="section-label">経路1　WebSocket 直結（推奨）</div>
+  <div class="intro">
+    <p>LLMCon を出力先 <code>websocket</code> で起動すると、コントローラの状態が <b>WebSocket でゲームへ直接届きます</b>。次の3点が利点です。</p>
+    <p>・パソコンに何台のコントローラがつながっていても、<b>パッドの取り違えが起きません</b>。</p>
+    <p>・ゲームのタブからフォーカスが外れても、<b>入力は届き続けます</b>。別タブのコントローラのページを操作しながらでも遊べます。</p>
+    <p>・改変ルール（無効化・差し替え・連打・反転・反応遅延・アナログ変換）を<b>通したあとの状態</b>が届くので、改変の効果がそのまま画面に出ます。</p>
+    <p><b>起動のしかた</b>　LLMCon を <code>CntlLevelConnection.exe --sink vigem+websocket</code> のように起動します。<code>vigem</code> と <code>websocket</code> の両方を有効にすると、実際のゲームとブラウザのゲームを同時に動かせます。</p>
+    <p><b>つなぎ方</b>　LLMCon と同じ機械で遊ぶなら、このページのゲームをそのまま開くだけで <code>ws://127.0.0.1:8777/vcon/ws</code> につながります。別の機械や別のポートの LLMCon につなぐときは、ゲームの URL に <code>?ws=ホスト:ポート</code> を付けてください（例：<code>shooter.html?ws=100.119.199.18:8777</code>）。</p>
+  </div>
+
+  <div class="section-label">経路2　ブラウザの Gamepad API</div>
+  <div class="intro">
+    <p>WebSocket から状態が届いていないあいだは、各ゲームはこれまでどおりブラウザの <b>Gamepad API</b> で仮想コントローラを読みます。KuriCon のコントローラのページ（<a href="http://127.0.0.1:8788/vcon.html">http://127.0.0.1:8788/vcon.html</a>）や物理パッド、マイクで入力すると、ここのゲームが反応します。この経路には次の制約があります。</p>
+    <p>・<b>ゲームのタブにフォーカスが要ります。</b>ブラウザは、ゲームのタブにフォーカスした状態でボタンが押されるまでパッドを見せません。まずゲームのタブをクリックしてフォーカスを当ててから入力してください。</p>
+    <p>・<b>パッドの取り違えが起こり得ます。</b>パソコンには複数のコントローラ（外付けUSBパッド・本体内蔵のコントローラ・仮想コントローラ）が同時に見えることが多く、ゲームが読むパッドを取り違えると入力に反応しません。各ゲームは「今まさにボタンを押したコントローラ」へ自動で操作対象を切り替えるので、動かしたいコントローラのボタンを一度押せば、そのパッドに切り替わります。<code>Back</code> ボタンで手動でも切り替えられます。まぎらわしいときは、外付けUSBパッドを外すと分かりやすくなります。</p>
+    <p>・KuriCon の画面上のコントローラ（別タブの <code>vcon.html</code>）で操作すると、その瞬間ゲームのタブからフォーカスが外れます。そのため、タブを行き来しながらの同時操作は難しくなります。マイク（声でボタン）や物理パッド経由なら、ゲームにフォーカスを当てたまま入力できます。</p>
+  </div>
+
+  <div class="section-label">ゲーム一覧</div>
+  <div class="grid">
+
+    <a class="card" href="fighting.html">
+      <div class="title-row">
+        <span class="icon">&#9670;</span>
+        <span class="name">格闘ゲーム</span>
+      </div>
+      <div class="genre">対戦格闘 / Fighting</div>
+      <div class="ctrl">
+        移動＝十字 / 左スティック　ジャンプ＝上 / <span class="k">LB</span><br>
+        攻撃＝<span class="k">A</span>弱P <span class="k">B</span>強P <span class="k">X</span>弱K <span class="k">Y</span>強K　再戦＝<span class="k">Start</span>
+      </div>
+      <div class="go">プレイする &rarr;</div>
+    </a>
+
+    <a class="card" href="platformer.html">
+      <div class="title-row">
+        <span class="icon">&#9632;</span>
+        <span class="name">2Dプラットフォーマー</span>
+      </div>
+      <div class="genre">横スクロール・ジャンプアクション / Platformer</div>
+      <div class="ctrl">
+        移動＝十字 / 左スティック　ジャンプ＝<span class="k">A</span><br>
+        ダッシュ＝<span class="k">B</span>押しっぱ　最初から＝<span class="k">Start</span>
+      </div>
+      <div class="go">プレイする &rarr;</div>
+    </a>
+
+    <a class="card" href="puzzle.html">
+      <div class="title-row">
+        <span class="icon">&#9639;</span>
+        <span class="name">落ち物パズル</span>
+      </div>
+      <div class="genre">落下ブロックパズル / Puzzle</div>
+      <div class="ctrl">
+        移動＝左右　ソフトドロップ＝下<br>
+        ハードドロップ＝上 / <span class="k">X</span>　回転＝<span class="k">A</span>右 <span class="k">B</span>左　再開＝<span class="k">Start</span>
+      </div>
+      <div class="go">プレイする &rarr;</div>
+    </a>
+
+    <a class="card" href="rpg.html">
+      <div class="title-row">
+        <span class="icon">&#9670;</span>
+        <span class="name">ちいさなRPG</span>
+      </div>
+      <div class="genre">探索・会話 / RPG</div>
+      <div class="ctrl">
+        移動＝十字 / 左スティック　決定・調べる＝<span class="k">A</span><br>
+        キャンセル＝<span class="k">B</span>　メニュー＝<span class="k">Start</span>
+      </div>
+      <div class="go">プレイする &rarr;</div>
+    </a>
+
+    <a class="card" href="shooter.html">
+      <div class="title-row">
+        <span class="icon">&#9650;</span>
+        <span class="name">シューティング</span>
+      </div>
+      <div class="genre">インベーダー風 / Shooter</div>
+      <div class="ctrl">
+        移動＝左右 / 左スティック<br>
+        ショット＝<span class="k">A</span>（押しっぱで連射）
+      </div>
+      <div class="go">プレイする &rarr;</div>
+    </a>
+
+  </div>
+
+  <footer>
+    各ゲーム共通　入力は <span style="color:var(--amber)">WebSocket（LLMCon 直結）を優先</span>し、届いていないあいだは <span style="color:var(--amber)">W3C Gamepad API</span> を毎フレーム読み取ります（標準マッピング: A=0 B=1 X=2 Y=3 LB=4 RB=5 LT=6 RT=7 Back=8 Start=9 十字=12-15 軸=左スティック）。Gamepad API のときの操作対象は最後にボタンを押したコントローラに自動追従し、<span style="color:var(--amber)">Back</span>で手動切替もできます。いま使っている経路は右上のHUDで確認できます。キーボードでも操作できます。
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,1524 @@
+<meta charset="utf-8">
+<title>ちいさなRPG — CntlLevelConnection</title>
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    background: #0e1016;
+    color: #d7dbe6;
+    font-family: "Segoe UI", "Meiryo", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 14px 12px 40px;
+  }
+  header.topbar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  header.topbar h1 {
+    font-size: 20px;
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  header.topbar h1 .accent { color: #f4a340; }
+  header.topbar a {
+    color: #f4a340;
+    text-decoration: none;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  header.topbar a:hover { text-decoration: underline; }
+  .stage {
+    position: relative;
+    width: 820px;
+    max-width: 100%;
+    margin: 0 auto;
+  }
+  canvas#screen {
+    display: block;
+    width: 820px;
+    max-width: 100%;
+    height: auto;
+    background: #0b0d13;
+    border: 1px solid #262c3a;
+    border-radius: 6px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+    image-rendering: pixelated;
+  }
+  .hint {
+    color: #8b93a7;
+    font-size: 12.5px;
+    line-height: 1.6;
+    margin: 10px auto 0;
+    max-width: 820px;
+  }
+  .hint b { color: #c3cad9; font-weight: 600; }
+  .hint .k {
+    display: inline-block;
+    background: #1a1f2b;
+    border: 1px solid #303748;
+    border-radius: 4px;
+    padding: 0 5px;
+    color: #d7dbe6;
+    font-size: 11.5px;
+  }
+</style>
+
+<div class="wrap">
+  <header class="topbar">
+    <h1><span class="accent">◆</span> ちいさなRPG <span style="color:#5b6579;font-weight:400;font-size:13px;">— コントローラ確認用</span></h1>
+    <a href="index.html">← ランチャー</a>
+  </header>
+
+  <div class="stage">
+    <canvas id="screen" width="820" height="500"></canvas>
+  </div>
+
+  <p class="hint">
+    <b>移動</b>：十字キー / 左スティック / 矢印・WASD
+    <b>A（決定・調べる）</b>：<span class="k">A</span> / <span class="k">Z</span>
+    <b>B（キャンセル）</b>：<span class="k">B</span> / <span class="k">X</span>
+    <b>メニュー</b>：<span class="k">Start</span> / <span class="k">Enter</span>
+    <b>パッド切替</b>：<span class="k">Back</span> ／ <span class="k">L/R</span>
+    <br>
+    NPCや宝箱、看板に近づいて A で調べる。Start でコマンドメニュー。ゲームオーバーや終了後は Start / Enter でやり直し。
+  </p>
+</div>
+
+<script>
+"use strict";
+(function () {
+
+  /* ============================================================
+     基本セットアップ
+     ============================================================ */
+  var canvas = document.getElementById("screen");
+  var ctx = canvas.getContext("2d");
+  var W = canvas.width, H = canvas.height;
+
+  var COL = {
+    bg:      "#0e1016",
+    panel:   "#161b26",
+    panel2:  "#1e2431",
+    line:    "#303748",
+    text:    "#e6e9f2",
+    dim:     "#8b93a7",
+    accent:  "#f4a340",
+    accent2: "#ffce7a",
+    good:    "#7fd18b",
+    bad:     "#e86d6d",
+    grass:   "#20321f",
+    grass2:  "#243a22",
+    tree:    "#2f5a30",
+    treeTop: "#3f7a3e",
+    house:   "#6b4a35",
+    roof:    "#9a5b3a",
+    water:   "#1c3550",
+    path:    "#3a3324",
+    chest:   "#c8912f",
+    npc:     "#5a8fd6",
+    hero:    "#e6e9f2",
+    heroB:   "#f4a340",
+    magic:   "#c58bff"
+  };
+
+  /* ============================================================
+     マップ定義
+     タイル: 0草 1木 2水 3道 の地形。
+     エンティティ（家・宝箱・NPC・看板）は別配列。
+     ============================================================ */
+  var TILE = 40;                 // 1タイルの描画サイズ
+  var MAP_W = 20, MAP_H = 12;    // タイル数（20*40=800, 12*40=480 でカメラ内に収まる）
+
+  // 地形（20列 x 12行）。文字で書いてパースする。
+  //  . 草  T 木  ~ 水  # 道
+  var MAPSRC = [
+    "TTTTTTTTTTTTTTTTTTTT",
+    "T..........T.......T",
+    "T..TT......#.......T",
+    "T..........#...TT..T",
+    "T....###########...T",
+    "T....#.......#.....T",
+    "T~~..#...##..#.....T",
+    "T~~..#...##..#..TT.T",
+    "T....######..#.....T",
+    "T..........T.#.....T",
+    "T.....TT.....#.....T",
+    "TTTTTTTTTTTTTTTTTTTT"
+  ];
+
+  var terrain = []; // terrain[y][x] = 0..3
+  (function parseMap() {
+    for (var y = 0; y < MAP_H; y++) {
+      var row = [];
+      for (var x = 0; x < MAP_W; x++) {
+        var c = MAPSRC[y].charAt(x);
+        row.push(c === "T" ? 1 : c === "~" ? 2 : c === "#" ? 3 : 0);
+      }
+      terrain.push(row);
+    }
+  })();
+
+  function tileAt(x, y) {
+    if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return 1; // 場外は壁扱い
+    return terrain[y][x];
+  }
+  function terrainBlocked(x, y) {
+    var t = tileAt(x, y);
+    return t === 1 || t === 2; // 木と水は通れない
+  }
+
+  /* エンティティ（調べられるもの）。gx,gy はタイル座標。 */
+  var entities = [
+    { type:"house", gx:9,  gy:6, name:"いえ",
+      msg:["ここは ちいさな いえだ。","だれも いないようだ。"] },
+    { type:"sign", gx:9, gy:3, name:"かんばん",
+      msg:["【そうさ せつめい】","じゅうじキー か スティックで うごく。","A で しらべる、B で とじる。","Start で コマンドメニュー。"] },
+    { type:"chest", gx:2, gy:10, name:"たからばこ", opened:false,
+      msg:["たからばこを あけた！","「やくそう」を てにいれた！"] },
+    { type:"chest", gx:17, gy:2, name:"たからばこ", opened:false,
+      msg:["たからばこを あけた！","ゴールド 50 を てにいれた！"] },
+    { type:"npc", gx:6, gy:2, name:"むらびと", color:"#5a8fd6",
+      msg:["ようこそ ぼうけんしゃさま。","このさきの もりに まものが でるらしい。","きをつけて いっておいで。"] },
+    { type:"npc", gx:15, gy:9, name:"としより", color:"#c58bff",
+      msg:["わしは ここで ながいこと くらしておる。","B ボタンは キャンセル。","こまったら Start で メニューじゃ。"] },
+    { type:"npc", gx:13, gy:6, name:"へいし", color:"#e8a06d", isBoss:true,
+      msg:["きたか ぼうけんしゃ！","おれと ちからくらべを しよう。","A を おして しょうぶだ！"] }
+  ];
+
+  function entityAt(x, y) {
+    for (var i = 0; i < entities.length; i++) {
+      if (entities[i].gx === x && entities[i].gy === y) return entities[i];
+    }
+    return null;
+  }
+  function entityBlocked(x, y) {
+    var e = entityAt(x, y);
+    return !!e; // すべての実体は通れない（接して調べる）
+  }
+
+  /* ============================================================
+     プレイヤー / ゲーム状態
+     ============================================================ */
+  var hero = {
+    gx: 3, gy: 5,          // タイル座標
+    px: 3 * TILE, py: 5 * TILE, // 補間用のピクセル座標
+    dir: 2,                // 0上 1右 2下 3左
+    moving: false,
+    fromx: 0, fromy: 0, tox: 0, toy: 0, mt: 0,
+    hp: 30, maxhp: 30, mp: 8, maxmp: 8,
+    atk: 8, level: 1, gold: 0
+  };
+
+  var MOVE_TIME = 0.14; // タイル1マスの移動にかかる秒数
+
+  // ゲームの画面モード
+  var MODE = { FIELD:"field", MSG:"msg", MENU:"menu", STATUS:"status", BATTLE:"battle", OVER:"over" };
+  var mode = MODE.FIELD;
+
+  // メッセージウィンドウ状態
+  var msgState = {
+    lines: [], idx: 0,
+    after: null    // 全部読み終えたときに呼ぶコールバック
+  };
+
+  function openMessage(lines, after) {
+    msgState.lines = lines.slice();
+    msgState.idx = 0;
+    msgState.after = after || null;
+    mode = MODE.MSG;
+  }
+
+  // コマンドメニュー
+  var MENU_ITEMS = ["はなす", "しらべる", "つよさ", "とじる"];
+  var menuState = { cursor: 0, prev: MODE.FIELD };
+
+  /* ============================================================
+     ゲームパッド管理
+     ============================================================ */
+  var pads = {};          // index -> gamepad snapshot 情報
+  var activePad = null;   // 現在操作対象の gamepad index
+  var anyPadEverSeen = false;
+
+  window.addEventListener("gamepadconnected", function (e) {
+    anyPadEverSeen = true;
+    if (activePad === null) activePad = e.gamepad.index;
+  });
+  window.addEventListener("gamepaddisconnected", function (e) {
+    if (activePad === e.gamepad.index) {
+      activePad = null;
+    }
+  });
+
+  // 標準マッピングのボタン割り当て
+  var BTN = { A:0, B:1, X:2, Y:3, LB:4, RB:5, LT:6, RT:7, BACK:8, START:9, UP:12, DOWN:13, LEFT:14, RIGHT:15 };
+
+  /* ============================================================
+     WebSocket 経由のコントローラ入力（LLMCon）
+     LLMCon が {"t":"pad",...} を送ってくる。ブラウザの Gamepad API を
+     通さないので、パッドの取り違えが起きず、タブからフォーカスが外れても
+     届き続け、LLMCon の改変を通した最終的な出力がそのまま反映される。
+     ============================================================ */
+  var WS_FRESH_MS = 2000;   // この時間内に pad を受け取っていれば WebSocket を使う
+  var WS_RETRY_MS = 3000;   // 再接続の間隔
+
+  var wsPad = {
+    sock: null,
+    connected: false,
+    lastPadAt: 0,      // 最後に "pad" を受け取った時刻（ミリ秒）
+    everGotPad: false,
+    btn: {},           // ボタン名 -> true
+    lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 0,
+    host: "",
+    retryTimer: null
+  };
+
+  // 接続先ホストを決める： ?ws=host:port → location.host → 127.0.0.1:8777
+  function wsHost() {
+    var h = "";
+    try {
+      var m = /[?&]ws=([^&#]+)/.exec(location.search || "");
+      if (m) h = decodeURIComponent(m[1]);
+    } catch (e) { h = ""; }
+    if (!h && location.host) h = location.host;
+    if (!h) h = "127.0.0.1:8777";
+    return h;
+  }
+
+  // 直近 WS_FRESH_MS 以内に pad を受け取っていれば WebSocket 経路を使う
+  function wsFresh() {
+    return wsPad.everGotPad && (Date.now() - wsPad.lastPadAt) < WS_FRESH_MS;
+  }
+
+  function wsScheduleRetry() {
+    if (wsPad.retryTimer !== null) return;
+    wsPad.retryTimer = setTimeout(function () {
+      wsPad.retryTimer = null;
+      wsConnect();
+    }, WS_RETRY_MS);
+  }
+
+  function wsApplyPad(msg) {
+    var map = {};
+    var list = msg.buttons;
+    if (list && list.length) {
+      for (var i = 0; i < list.length; i++) {
+        if (typeof list[i] === "string") map[list[i]] = true;
+      }
+    }
+    wsPad.btn = map;
+    function num(v) { return (typeof v === "number" && isFinite(v)) ? v : 0; }
+    wsPad.lx = num(msg.lx); wsPad.ly = num(msg.ly);
+    wsPad.rx = num(msg.rx); wsPad.ry = num(msg.ry);
+    wsPad.lt = num(msg.lt); wsPad.rt = num(msg.rt);
+    wsPad.lastPadAt = Date.now();
+    wsPad.everGotPad = true;
+  }
+
+  function wsConnect() {
+    if (typeof WebSocket === "undefined") return;   // 使えない環境では何もしない
+    if (wsPad.sock) return;
+    wsPad.host = wsHost();
+    var sock;
+    try {
+      sock = new WebSocket("ws://" + wsPad.host + "/vcon/ws");
+    } catch (e) {
+      wsScheduleRetry();
+      return;
+    }
+    wsPad.sock = sock;
+    sock.onopen = function () { wsPad.connected = true; };
+    sock.onerror = function () { /* onclose で後始末する */ };
+    sock.onclose = function () {
+      wsPad.connected = false;
+      if (wsPad.sock === sock) wsPad.sock = null;
+      wsScheduleRetry();
+    };
+    sock.onmessage = function (ev) {
+      // 同じ口にはウェブ版コントローラ向けの配信も流れてくる。
+      // "reload" や {"t":"miclvl",...} は無視し、t が "pad" のものだけ扱う。
+      if (typeof ev.data !== "string") return;
+      var s = ev.data;
+      if (s.charAt(0) !== "{") return;
+      var msg;
+      try { msg = JSON.parse(s); } catch (e) { return; }
+      if (!msg || msg.t !== "pad") return;
+      wsApplyPad(msg);
+    };
+  }
+
+  try { wsPad.host = wsHost(); wsConnect(); } catch (e) { /* ゲームの動作は妨げない */ }
+
+  // 抽象入力（押した瞬間のエッジと押しっぱなし）
+  var input = {
+    // pressed（現在押されているか）
+    A:false, B:false, X:false, Y:false, LB:false, RB:false, LT:false, RT:false,
+    BACK:false, START:false,
+    up:false, down:false, left:false, right:false,
+    // 生の値（HUD 表示用）
+    lt:0, rt:0, ax:0, ay:0,
+    dpad:{up:false,down:false,left:false,right:false},
+    // エッジ（この 1 フレームで押された）
+    edge:{}
+  };
+  var prevInput = {}; // 直前フレームの pressed 状態
+
+  // キーボード状態
+  var keys = {};
+  window.addEventListener("keydown", function (e) {
+    keys[e.code] = true;
+    // ゲームでよく使うキーはスクロール抑止
+    var block = ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space","Enter",
+                 "KeyW","KeyA","KeyS","KeyD","KeyZ","KeyX","KeyC","KeyV"];
+    if (block.indexOf(e.code) >= 0) e.preventDefault();
+  });
+  window.addEventListener("keyup", function (e) { keys[e.code] = false; });
+
+  function getActiveGamepad() {
+    var gps = navigator.getGamepads ? navigator.getGamepads() : [];
+    if (activePad !== null && gps[activePad]) return gps[activePad];
+    // アクティブが無ければ最初に見つかったもの
+    for (var i = 0; i < gps.length; i++) {
+      if (gps[i]) { activePad = gps[i].index; return gps[i]; }
+    }
+    return null;
+  }
+
+  // 毎フレーム、接続中の全パッドを走査し「はっきりした入力」を出している
+  // パッドへ操作対象を自動で追従させる。
+  //   はっきりした入力 = buttons[0..15] のどれかが pressed、
+  //                      または左スティックが |axes[0]|>0.6 か |axes[1]|>0.6。
+  //   ボタンはドリフトしないため、スティックより優先する。
+  // これにより、ユーザが使いたいコントローラのボタンを押すだけで追従する。
+  function autoSelectPad() {
+    var gps = navigator.getGamepads ? navigator.getGamepads() : [];
+    var buttonPad = -1;        // 何らかのボタンを押しているパッド（最初に見つかったもの）
+    var stickPad = -1;         // スティックをはっきり倒しているパッド
+    var activeHasButton = false, activeHasStick = false;
+
+    for (var i = 0; i < gps.length; i++) {
+      var gp = gps[i];
+      if (!gp) continue;
+      // ボタン（0..15）のいずれかが押されているか
+      var btn = false;
+      var b = gp.buttons;
+      var bn = Math.min(b.length, 16);
+      for (var j = 0; j < bn; j++) {
+        if (b[j] && b[j].pressed) { btn = true; break; }
+      }
+      // 左スティックがしきい値を超えて倒れているか
+      var a = gp.axes;
+      var stick = (a.length > 0 && Math.abs(a[0]) > 0.6) ||
+                  (a.length > 1 && Math.abs(a[1]) > 0.6);
+
+      if (gp.index === activePad) { activeHasButton = btn; activeHasStick = stick; }
+      if (btn && buttonPad < 0) buttonPad = gp.index;
+      if (stick && stickPad < 0) stickPad = gp.index;
+    }
+
+    // ボタン優先。現在のアクティブが入力中ならそのまま維持し、
+    // そうでなければ入力を出しているパッドへ切り替える
+    // （＝常に「最後にはっきり入力したパッド」が操作対象になる）。
+    if (buttonPad >= 0) {
+      if (!activeHasButton) activePad = buttonPad;
+    } else if (stickPad >= 0) {
+      if (!activeHasStick) activePad = stickPad;
+    }
+  }
+
+  // 接続中のパッド一覧を取得
+  function listPads() {
+    var gps = navigator.getGamepads ? navigator.getGamepads() : [];
+    var out = [];
+    for (var i = 0; i < gps.length; i++) {
+      if (gps[i]) out.push(gps[i]);
+    }
+    return out;
+  }
+
+  // 毎フレーム入力を収集する
+  function pollInput() {
+    // WebSocket から新しい状態が届いていれば、そちらを使う。
+    // その間は Gamepad API の自動追従を働かせない（経路が揺れないように）。
+    var useWs = wsFresh();
+    var gp = null;
+    if (!useWs) {
+      autoSelectPad();        // 使用中のパッドへ操作対象を追従させる
+      gp = getActiveGamepad();
+      if (gp) anyPadEverSeen = true;
+    }
+
+    // --- 生のパッド値 ---
+    var rawA=false,rawB=false,rawX=false,rawY=false,rawLB=false,rawRB=false;
+    var rawBack=false,rawStart=false;
+    var rawLT=0, rawRT=0, rawAX=0, rawAY=0;
+    var dU=false,dD=false,dL=false,dR=false;
+
+    if (useWs) {
+      // WebSocket 経由（LLMCon の改変を通した最終的な出力）
+      var wb = wsPad.btn;
+      rawA = !!wb.A; rawB = !!wb.B; rawX = !!wb.X; rawY = !!wb.Y;
+      rawLB = !!wb.LB; rawRB = !!wb.RB;
+      rawBack = !!wb.Back; rawStart = !!wb.Start;
+      rawLT = wsPad.lt; rawRT = wsPad.rt;
+      dU = !!wb.DUp; dD = !!wb.DDown; dL = !!wb.DLeft; dR = !!wb.DRight;
+      rawAX = wsPad.lx;
+      rawAY = -wsPad.ly;      // 送られてくる ly は上が正、Gamepad API は上が負
+    } else if (gp) {
+      var b = gp.buttons, a = gp.axes;
+      function pb(i){ return b[i] && b[i].pressed; }
+      function vb(i){ return b[i] ? b[i].value : 0; }
+      rawA = pb(BTN.A); rawB = pb(BTN.B); rawX = pb(BTN.X); rawY = pb(BTN.Y);
+      rawLB = pb(BTN.LB); rawRB = pb(BTN.RB);
+      rawBack = pb(BTN.BACK); rawStart = pb(BTN.START);
+      rawLT = vb(BTN.LT); rawRT = vb(BTN.RT);
+      dU = pb(BTN.UP); dD = pb(BTN.DOWN); dL = pb(BTN.LEFT); dR = pb(BTN.RIGHT);
+      rawAX = a.length > 0 ? a[0] : 0;
+      rawAY = a.length > 1 ? a[1] : 0;
+    }
+
+    // --- キーボード ---
+    var kUp    = keys["ArrowUp"]||keys["KeyW"];
+    var kDown  = keys["ArrowDown"]||keys["KeyS"];
+    var kLeft  = keys["ArrowLeft"]||keys["KeyA"];
+    var kRight = keys["ArrowRight"]||keys["KeyD"];
+    var kA = keys["KeyZ"]||keys["Space"];
+    var kB = keys["KeyX"];
+    var kX = keys["KeyC"];
+    var kY = keys["KeyV"];
+    var kStart = keys["Enter"];
+    var kBack  = keys["ShiftLeft"]||keys["ShiftRight"]||keys["Backspace"];
+    var kLB = keys["KeyQ"];
+    var kRB = keys["KeyE"];
+
+    // --- 生値を HUD 用に保存（パッドの値をそのまま見せる） ---
+    input.ax = rawAX; input.ay = rawAY;
+    input.lt = rawLT; input.rt = rawRT;
+    input.dpad = { up:dU, down:dD, left:dL, right:dR };
+    input.rawBtn = { A:rawA, B:rawB, X:rawX, Y:rawY, LB:rawLB, RB:rawRB,
+                     LT:rawLT>0.5, RT:rawRT>0.5, BACK:rawBack, START:rawStart };
+
+    // --- 抽象入力（パッド OR キーボード） ---
+    var stickUp = rawAY < -0.4, stickDown = rawAY > 0.4;
+    var stickLeft = rawAX < -0.4, stickRight = rawAX > 0.4;
+
+    var cur = {
+      A: rawA || kA,
+      B: rawB || kB,
+      X: rawX || kX,
+      Y: rawY || kY,
+      LB: rawLB || kLB,
+      RB: rawRB || kRB,
+      LT: rawLT > 0.5,
+      RT: rawRT > 0.5,
+      BACK: rawBack || kBack,
+      START: rawStart || kStart,
+      up:    dU || stickUp    || kUp,
+      down:  dD || stickDown  || kDown,
+      left:  dL || stickLeft  || kLeft,
+      right: dR || stickRight || kRight
+    };
+
+    // エッジ検出（前フレーム比較で「押した瞬間」）
+    input.edge = {};
+    for (var key in cur) {
+      input[key] = cur[key];
+      input.edge[key] = cur[key] && !prevInput[key];
+    }
+    prevInput = cur;
+  }
+
+  // Back / L / R でアクティブパッドを切り替える（エッジ）
+  function handlePadSwitch() {
+    if (wsFresh()) return;   // WebSocket 経路のときは切り替えを働かせない
+    var plist = listPads();
+    if (plist.length === 0) return;
+    var step = 0;
+    if (input.edge.BACK || input.edge.RB) step = 1;
+    else if (input.edge.LB) step = -1;
+    if (step === 0) return;
+    // 現在のインデックスを plist 内で探す
+    var cur = -1;
+    for (var i = 0; i < plist.length; i++) if (plist[i].index === activePad) cur = i;
+    if (cur < 0) cur = 0;
+    var next = (cur + step + plist.length) % plist.length;
+    activePad = plist[next].index;
+  }
+
+  /* ============================================================
+     ゲーム進行ロジック
+     ============================================================ */
+
+  // 向きベクトル
+  var DVX = [0, 1, 0, -1];
+  var DVY = [-1, 0, 1, 0];
+
+  function tryMove(dir) {
+    if (hero.moving) return;
+    hero.dir = dir;
+    var nx = hero.gx + DVX[dir];
+    var ny = hero.gy + DVY[dir];
+    if (terrainBlocked(nx, ny) || entityBlocked(nx, ny)) {
+      return; // 壁・実体には向くだけで進まない
+    }
+    hero.moving = true;
+    hero.fromx = hero.gx; hero.fromy = hero.gy;
+    hero.tox = nx; hero.toy = ny; hero.mt = 0;
+  }
+
+  // プレイヤーが向いている先のタイルにいる実体
+  function facingEntity() {
+    var fx = hero.gx + DVX[hero.dir];
+    var fy = hero.gy + DVY[hero.dir];
+    return entityAt(fx, fy);
+  }
+
+  function interact() {
+    var e = facingEntity();
+    if (!e) {
+      openMessage(["だれも いない。", "しらべても なにも なさそうだ。"]);
+      return;
+    }
+    if (e.type === "chest") {
+      if (e.opened) {
+        openMessage(["からっぽの たからばこだ。"]);
+      } else {
+        e.opened = true;
+        applyChest(e);
+        openMessage(e.msg);
+      }
+      return;
+    }
+    if (e.isBoss) {
+      openMessage(e.msg, function () { startBattle(); });
+      return;
+    }
+    openMessage(e.msg);
+  }
+
+  function applyChest(e) {
+    // 宝箱の中身を実際に反映する
+    if (e.gy === 10) { hero.item = (hero.item||0) + 1; } // やくそう
+    if (e.gy === 2)  { hero.gold += 50; }
+  }
+
+  /* ============================================================
+     コマンドメニュー
+     ============================================================ */
+  function openMenu() {
+    menuState.cursor = 0;
+    menuState.prev = mode;
+    mode = MODE.MENU;
+  }
+  function chooseMenu() {
+    var item = MENU_ITEMS[menuState.cursor];
+    if (item === "とじる") { mode = MODE.FIELD; return; }
+    if (item === "つよさ") { mode = MODE.STATUS; return; }
+    if (item === "しらべる") { mode = MODE.FIELD; interact(); return; }
+    if (item === "はなす") {
+      mode = MODE.FIELD;
+      var e = facingEntity();
+      if (e && (e.type === "npc")) openMessage(e.msg);
+      else if (e && e.isBoss) openMessage(e.msg, function(){ startBattle(); });
+      else openMessage(["ちかくに はなす あいてが いない。"]);
+      return;
+    }
+  }
+
+  /* ============================================================
+     戦闘（1対1のターン制）
+     ============================================================ */
+  var battle = null;
+  var BATTLE_CMDS = ["たたかう", "じゅもん", "にげる"];
+
+  function startBattle() {
+    battle = {
+      enemyName: "みならい へいし",
+      ehp: 24, emaxhp: 24, eatk: 6,
+      cursor: 0,
+      log: ["みならい へいしが あらわれた！"],
+      phase: "cmd",     // cmd（選択）/ anim（演出）/ result（終了）
+      flash: 0,
+      shake: 0,
+      win: false, lose: false, ranaway: false,
+      busy: 0
+    };
+    mode = MODE.BATTLE;
+  }
+
+  function battleLog(s) {
+    battle.log.push(s);
+    if (battle.log.length > 4) battle.log.shift();
+  }
+
+  function battleChoose() {
+    if (battle.phase !== "cmd") return;
+    var cmd = BATTLE_CMDS[battle.cursor];
+
+    if (cmd === "にげる") {
+      if (Math.random() < 0.5) {
+        battle.ranaway = true;
+        battleLog("うまく にげだした！");
+        battle.phase = "result";
+        battle.busy = 1.0;
+      } else {
+        battleLog("しかし まわりこまれた！");
+        enemyTurn();
+      }
+      return;
+    }
+
+    if (cmd === "じゅもん") {
+      if (hero.mp < 4) {
+        battleLog("MP が たりない！");
+        return; // ターン消費しない
+      }
+      hero.mp -= 4;
+      var dmg = 10 + Math.floor(Math.random() * 6);
+      battle.ehp -= dmg;
+      battle.flash = 0.35;
+      battleLog("メラ！ " + battle.enemyName + "に " + dmg + " のダメージ！");
+      checkBattleEnd(enemyTurn);
+      return;
+    }
+
+    if (cmd === "たたかう") {
+      var d = hero.atk + Math.floor(Math.random() * 5) - 1;
+      if (d < 1) d = 1;
+      battle.ehp -= d;
+      battle.flash = 0.2;
+      battleLog("こうげき！ " + d + " のダメージ！");
+      checkBattleEnd(enemyTurn);
+      return;
+    }
+  }
+
+  function checkBattleEnd(cont) {
+    if (battle.ehp <= 0) {
+      battle.ehp = 0;
+      battle.win = true;
+      battleLog(battle.enemyName + "を たおした！");
+      battle.phase = "result";
+      battle.busy = 1.0;
+      hero.gold += 30;
+    } else {
+      // 敵ターンを少し遅らせて演出する
+      battle.phase = "anim";
+      battle.busy = 0.55;
+      battle.pending = cont;
+    }
+  }
+
+  function enemyTurn() {
+    var d = battle.eatk + Math.floor(Math.random() * 4);
+    hero.hp -= d;
+    battle.shake = 0.3;
+    battleLog(battle.enemyName + "の こうげき！ " + d + " のダメージ！");
+    if (hero.hp <= 0) {
+      hero.hp = 0;
+      battle.lose = true;
+      battleLog("あなたは たおれてしまった…");
+      battle.phase = "result";
+      battle.busy = 1.0;
+    } else {
+      battle.phase = "cmd";
+    }
+  }
+
+  function endBattle() {
+    if (battle.lose) {
+      mode = MODE.OVER;
+    } else {
+      // 勝利 / 逃走はフィールドへ戻る
+      var won = battle.win;
+      battle = null;
+      mode = MODE.FIELD;
+      if (won) openMessage(["しょうぶに かった！", "けいけんを つんだ きがする。"]);
+      else openMessage(["ぶじ にげきった。"]);
+    }
+  }
+
+  /* ============================================================
+     入力の処理（モードごと）
+     ============================================================ */
+  function handleInput(dt) {
+    handlePadSwitch();
+
+    if (mode === MODE.FIELD) {
+      // 移動
+      if (!hero.moving) {
+        if (input.up) tryMove(0);
+        else if (input.right) tryMove(1);
+        else if (input.down) tryMove(2);
+        else if (input.left) tryMove(3);
+      }
+      if (input.edge.A) interact();
+      if (input.edge.START) openMenu();
+      return;
+    }
+
+    if (mode === MODE.MSG) {
+      if (input.edge.A || input.edge.B || input.edge.START) {
+        msgState.idx += 2; // 一度に 2 行送る（ウィンドウは 2 行表示）
+        if (msgState.idx >= msgState.lines.length) {
+          var after = msgState.after;
+          msgState.after = null;
+          mode = MODE.FIELD;
+          if (after) after();
+        }
+      }
+      return;
+    }
+
+    if (mode === MODE.MENU) {
+      if (input.edge.up)   menuState.cursor = (menuState.cursor + MENU_ITEMS.length - 1) % MENU_ITEMS.length;
+      if (input.edge.down) menuState.cursor = (menuState.cursor + 1) % MENU_ITEMS.length;
+      if (input.edge.A)    chooseMenu();
+      if (input.edge.B || input.edge.START) mode = MODE.FIELD;
+      return;
+    }
+
+    if (mode === MODE.STATUS) {
+      if (input.edge.B || input.edge.A || input.edge.START) mode = MODE.MENU;
+      return;
+    }
+
+    if (mode === MODE.BATTLE) {
+      handleBattleInput();
+      return;
+    }
+
+    if (mode === MODE.OVER) {
+      if (input.edge.START || input.edge.A) restart();
+      return;
+    }
+  }
+
+  function handleBattleInput() {
+    if (battle.busy > 0) return; // 演出中は入力を受けない
+
+    if (battle.phase === "result") {
+      if (input.edge.A || input.edge.B || input.edge.START) endBattle();
+      return;
+    }
+    if (battle.phase !== "cmd") return;
+
+    if (input.edge.up)   battle.cursor = (battle.cursor + BATTLE_CMDS.length - 1) % BATTLE_CMDS.length;
+    if (input.edge.down) battle.cursor = (battle.cursor + 1) % BATTLE_CMDS.length;
+    if (input.edge.A)    battleChoose();
+    // B は戦闘中は「にげる」にカーソルを合わせるショートカット
+    if (input.edge.B)    battle.cursor = 2;
+  }
+
+  function restart() {
+    // ゲーム全体を初期化
+    hero.gx = 3; hero.gy = 5;
+    hero.px = 3 * TILE; hero.py = 5 * TILE;
+    hero.dir = 2; hero.moving = false; hero.mt = 0;
+    hero.hp = hero.maxhp; hero.mp = hero.maxmp;
+    hero.gold = 0; hero.item = 0;
+    for (var i = 0; i < entities.length; i++) {
+      if (entities[i].type === "chest") entities[i].opened = false;
+    }
+    battle = null;
+    mode = MODE.FIELD;
+    msgState.lines = []; msgState.idx = 0; msgState.after = null;
+  }
+
+  /* ============================================================
+     更新
+     ============================================================ */
+  function update(dt) {
+    // 移動補間
+    if (hero.moving) {
+      hero.mt += dt / MOVE_TIME;
+      if (hero.mt >= 1) {
+        hero.mt = 1; hero.moving = false;
+        hero.gx = hero.tox; hero.gy = hero.toy;
+        hero.px = hero.gx * TILE; hero.py = hero.gy * TILE;
+      } else {
+        hero.px = (hero.fromx + (hero.tox - hero.fromx) * hero.mt) * TILE;
+        hero.py = (hero.fromy + (hero.toy - hero.fromy) * hero.mt) * TILE;
+      }
+    } else {
+      hero.px = hero.gx * TILE; hero.py = hero.gy * TILE;
+    }
+
+    // 戦闘演出のタイマー
+    if (battle) {
+      if (battle.flash > 0) battle.flash = Math.max(0, battle.flash - dt);
+      if (battle.shake > 0) battle.shake = Math.max(0, battle.shake - dt);
+      if (battle.busy > 0) {
+        battle.busy -= dt;
+        if (battle.busy <= 0) {
+          battle.busy = 0;
+          if (battle.phase === "anim" && battle.pending) {
+            var f = battle.pending; battle.pending = null; f();
+          } else if (battle.phase === "result") {
+            // 結果表示はプレイヤーの決定を待つ（busy 解除だけ）
+          }
+        }
+      }
+    }
+  }
+
+  /* ============================================================
+     描画ヘルパ
+     ============================================================ */
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function panel(x, y, w, h) {
+    ctx.fillStyle = "rgba(14,16,22,0.92)";
+    roundRect(x, y, w, h, 8); ctx.fill();
+    ctx.strokeStyle = COL.accent;
+    ctx.lineWidth = 2;
+    roundRect(x + 1, y + 1, w - 2, h - 2, 7); ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+
+  /* ============================================================
+     フィールド描画
+     ============================================================ */
+  function drawField() {
+    // 地形
+    for (var y = 0; y < MAP_H; y++) {
+      for (var x = 0; x < MAP_W; x++) {
+        var t = terrain[y][x];
+        var sx = x * TILE, sy = y * TILE;
+        // 草の下地（市松で微妙に色を変える）
+        var base = ((x + y) % 2 === 0) ? COL.grass : COL.grass2;
+        ctx.fillStyle = base;
+        ctx.fillRect(sx, sy, TILE, TILE);
+
+        if (t === 3) { // 道
+          ctx.fillStyle = COL.path;
+          ctx.fillRect(sx, sy, TILE, TILE);
+          ctx.fillStyle = "rgba(255,255,255,0.03)";
+          ctx.fillRect(sx, sy, TILE, TILE);
+        } else if (t === 2) { // 水
+          ctx.fillStyle = COL.water;
+          ctx.fillRect(sx, sy, TILE, TILE);
+          ctx.fillStyle = "rgba(120,180,220,0.18)";
+          ctx.fillRect(sx + 4, sy + 8, TILE - 8, 3);
+          ctx.fillRect(sx + 8, sy + 22, TILE - 14, 3);
+        } else if (t === 1) { // 木
+          // 幹
+          ctx.fillStyle = "#3a2a1c";
+          ctx.fillRect(sx + TILE/2 - 3, sy + TILE - 14, 6, 12);
+          // 葉
+          ctx.fillStyle = COL.tree;
+          ctx.beginPath();
+          ctx.arc(sx + TILE/2, sy + TILE/2 - 2, TILE/2 - 3, 0, Math.PI*2);
+          ctx.fill();
+          ctx.fillStyle = COL.treeTop;
+          ctx.beginPath();
+          ctx.arc(sx + TILE/2 - 4, sy + TILE/2 - 6, TILE/2 - 9, 0, Math.PI*2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // エンティティ
+    for (var i = 0; i < entities.length; i++) {
+      drawEntity(entities[i]);
+    }
+
+    // プレイヤー
+    drawHero();
+  }
+
+  function drawEntity(e) {
+    var sx = e.gx * TILE, sy = e.gy * TILE;
+    if (e.type === "house") {
+      // 屋根
+      ctx.fillStyle = COL.roof;
+      ctx.beginPath();
+      ctx.moveTo(sx + 2, sy + 18);
+      ctx.lineTo(sx + TILE/2, sy + 2);
+      ctx.lineTo(sx + TILE - 2, sy + 18);
+      ctx.closePath(); ctx.fill();
+      // 壁
+      ctx.fillStyle = COL.house;
+      ctx.fillRect(sx + 6, sy + 18, TILE - 12, TILE - 20);
+      // 扉
+      ctx.fillStyle = "#2a1c12";
+      ctx.fillRect(sx + TILE/2 - 5, sy + TILE - 12, 10, 10);
+    } else if (e.type === "chest") {
+      ctx.fillStyle = e.opened ? "#6b5220" : COL.chest;
+      ctx.fillRect(sx + 8, sy + 16, TILE - 16, TILE - 22);
+      ctx.fillStyle = e.opened ? "#4a3814" : "#8a621f";
+      ctx.fillRect(sx + 8, sy + 12, TILE - 16, 8);
+      ctx.fillStyle = "#f4e0a0";
+      ctx.fillRect(sx + TILE/2 - 2, sy + 18, 4, 4);
+    } else if (e.type === "sign") {
+      ctx.fillStyle = "#6b4a2f";
+      ctx.fillRect(sx + TILE/2 - 2, sy + 14, 4, TILE - 16);
+      ctx.fillStyle = "#8a6a45";
+      ctx.fillRect(sx + 6, sy + 8, TILE - 12, 16);
+      ctx.fillStyle = "#d8c090";
+      ctx.fillRect(sx + 9, sy + 12, TILE - 18, 2);
+      ctx.fillRect(sx + 9, sy + 17, TILE - 18, 2);
+    } else if (e.type === "npc") {
+      drawChar(sx, sy, e.color || COL.npc, 2);
+    }
+  }
+
+  // 汎用キャラ描画（見下ろし）
+  function drawChar(sx, sy, color, dir) {
+    var cx = sx + TILE/2, cy = sy + TILE/2;
+    // 影
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.beginPath();
+    ctx.ellipse(cx, sy + TILE - 6, 11, 4, 0, 0, Math.PI*2);
+    ctx.fill();
+    // 体
+    ctx.fillStyle = color;
+    roundRect(cx - 10, cy - 6, 20, 20, 5); ctx.fill();
+    // 頭
+    ctx.fillStyle = "#f0d0a8";
+    ctx.beginPath();
+    ctx.arc(cx, cy - 8, 8, 0, Math.PI*2);
+    ctx.fill();
+    // 向きの目印（顔の点）
+    ctx.fillStyle = "#20242e";
+    var ox = dir===1?4:dir===3?-4:0;
+    var oy = dir===0?-3:dir===2?2:0;
+    ctx.beginPath();
+    ctx.arc(cx + ox, cy - 8 + oy, 2.2, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  function drawHero() {
+    var sx = hero.px, sy = hero.py;
+    var cx = sx + TILE/2, cy = sy + TILE/2;
+    // 影
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(cx, sy + TILE - 6, 12, 4.5, 0, 0, Math.PI*2);
+    ctx.fill();
+    // マント（琥珀）
+    ctx.fillStyle = COL.heroB;
+    roundRect(cx - 11, cy - 5, 22, 22, 6); ctx.fill();
+    // 体（明るい）
+    ctx.fillStyle = COL.hero;
+    roundRect(cx - 8, cy - 4, 16, 16, 5); ctx.fill();
+    // 頭
+    ctx.fillStyle = "#f6dab0";
+    ctx.beginPath();
+    ctx.arc(cx, cy - 9, 8.5, 0, Math.PI*2);
+    ctx.fill();
+    // 髪
+    ctx.fillStyle = "#5a3d28";
+    ctx.beginPath();
+    ctx.arc(cx, cy - 11, 8.5, Math.PI, Math.PI*2);
+    ctx.fill();
+    // 向きの目印
+    ctx.fillStyle = "#20242e";
+    var ox = hero.dir===1?4:hero.dir===3?-4:0;
+    var oy = hero.dir===0?-3:hero.dir===2?2:0;
+    ctx.beginPath();
+    ctx.arc(cx + ox, cy - 9 + oy, 2.4, 0, Math.PI*2);
+    ctx.fill();
+
+    // 調べられる相手が正面にいたら小さな「！」を出す
+    if (mode === MODE.FIELD && !hero.moving && facingEntity()) {
+      ctx.fillStyle = COL.accent;
+      ctx.font = "bold 16px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("!", cx, sy - 2);
+      ctx.textAlign = "left";
+    }
+  }
+
+  /* ============================================================
+     メッセージウィンドウ描画
+     ============================================================ */
+  function drawMessageWindow() {
+    var mw = 780, mh = 96;
+    var mx = (W - mw) / 2, my = H - mh - 14;
+    panel(mx, my, mw, mh);
+    ctx.fillStyle = COL.text;
+    ctx.font = "20px 'Meiryo', sans-serif";
+    ctx.textAlign = "left";
+    var l1 = msgState.lines[msgState.idx] || "";
+    var l2 = msgState.lines[msgState.idx + 1] || "";
+    ctx.fillText(l1, mx + 22, my + 38);
+    ctx.fillText(l2, mx + 22, my + 68);
+    // 送りの三角（点滅）
+    if ((Date.now() % 900) < 500) {
+      ctx.fillStyle = COL.accent;
+      ctx.beginPath();
+      ctx.moveTo(mx + mw - 26, my + mh - 20);
+      ctx.lineTo(mx + mw - 14, my + mh - 20);
+      ctx.lineTo(mx + mw - 20, my + mh - 12);
+      ctx.closePath(); ctx.fill();
+    }
+    // 操作ヒント
+    ctx.fillStyle = COL.dim;
+    ctx.font = "12px sans-serif";
+    ctx.fillText("A / B で つぎへ", mx + 22, my + mh - 10);
+  }
+
+  /* ============================================================
+     コマンドメニュー描画
+     ============================================================ */
+  function drawMenu() {
+    var mw = 180, mh = 30 + MENU_ITEMS.length * 34;
+    var mx = 20, my = 20;
+    panel(mx, my, mw, mh);
+    ctx.font = "20px 'Meiryo', sans-serif";
+    ctx.textAlign = "left";
+    for (var i = 0; i < MENU_ITEMS.length; i++) {
+      var y = my + 30 + i * 34;
+      if (i === menuState.cursor) {
+        ctx.fillStyle = "rgba(244,163,64,0.18)";
+        roundRect(mx + 8, y - 22, mw - 16, 30, 5); ctx.fill();
+        ctx.fillStyle = COL.accent;
+        // カーソルの三角
+        ctx.beginPath();
+        ctx.moveTo(mx + 16, y - 14);
+        ctx.lineTo(mx + 16, y - 2);
+        ctx.lineTo(mx + 24, y - 8);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = COL.accent2;
+      } else {
+        ctx.fillStyle = COL.text;
+      }
+      ctx.fillText(MENU_ITEMS[i], mx + 34, y - 2);
+    }
+    ctx.fillStyle = COL.dim;
+    ctx.font = "12px sans-serif";
+    ctx.fillText("十字=カーソル A=決定 B=閉じる", mx, my + mh + 16);
+  }
+
+  /* ============================================================
+     つよさ（ステータス）画面
+     ============================================================ */
+  function drawStatus() {
+    var mw = 360, mh = 240;
+    var mx = (W - mw) / 2, my = (H - mh) / 2 - 20;
+    panel(mx, my, mw, mh);
+    ctx.textAlign = "left";
+    ctx.fillStyle = COL.accent;
+    ctx.font = "bold 22px 'Meiryo', sans-serif";
+    ctx.fillText("つよさ", mx + 24, my + 40);
+    ctx.strokeStyle = COL.line;
+    ctx.beginPath(); ctx.moveTo(mx + 24, my + 52); ctx.lineTo(mx + mw - 24, my + 52); ctx.stroke();
+
+    ctx.font = "18px 'Meiryo', sans-serif";
+    var rows = [
+      ["レベル", hero.level],
+      ["HP", hero.hp + " / " + hero.maxhp],
+      ["MP", hero.mp + " / " + hero.maxmp],
+      ["こうげき", hero.atk],
+      ["ゴールド", hero.gold + " G"],
+      ["やくそう", (hero.item||0) + " こ"]
+    ];
+    for (var i = 0; i < rows.length; i++) {
+      var y = my + 84 + i * 26;
+      ctx.fillStyle = COL.dim;
+      ctx.fillText(rows[i][0], mx + 30, y);
+      ctx.fillStyle = COL.text;
+      ctx.fillText(String(rows[i][1]), mx + 190, y);
+    }
+    ctx.fillStyle = COL.dim;
+    ctx.font = "12px sans-serif";
+    ctx.fillText("B / A で もどる", mx + 24, my + mh - 14);
+  }
+
+  /* ============================================================
+     戦闘画面描画
+     ============================================================ */
+  function drawBattle() {
+    // 背景
+    ctx.fillStyle = "#0a0c11";
+    ctx.fillRect(0, 0, W, H);
+    // 地面のグラデーション風
+    ctx.fillStyle = "#15100c";
+    ctx.fillRect(0, 300, W, 200);
+
+    var shake = battle.shake > 0 ? (Math.random() - 0.5) * 10 : 0;
+
+    // フラッシュ（自分の攻撃演出）
+    if (battle.flash > 0) {
+      ctx.fillStyle = "rgba(244,163,64," + (battle.flash * 0.5) + ")";
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // 敵
+    var ecx = W/2 + shake, ecy = 200;
+    // 倒したときは薄くなっていく（busy は 1.0 から 0 へ減る）
+    ctx.globalAlpha = battle.win ? Math.max(0.15, battle.busy) : 1;
+    // 影
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath();
+    ctx.ellipse(ecx, ecy + 70, 60, 16, 0, 0, Math.PI*2); ctx.fill();
+    // 体
+    ctx.fillStyle = "#8a4a4a";
+    roundRect(ecx - 46, ecy - 30, 92, 96, 16); ctx.fill();
+    ctx.fillStyle = "#a85a5a";
+    roundRect(ecx - 34, ecy - 20, 68, 40, 10); ctx.fill();
+    // 頭
+    ctx.fillStyle = "#e0b090";
+    ctx.beginPath(); ctx.arc(ecx, ecy - 44, 28, 0, Math.PI*2); ctx.fill();
+    // 目
+    ctx.fillStyle = "#2a1010";
+    ctx.beginPath(); ctx.arc(ecx - 10, ecy - 46, 4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(ecx + 10, ecy - 46, 4, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // 敵の名前と HP バー
+    ctx.textAlign = "center";
+    ctx.fillStyle = COL.text;
+    ctx.font = "18px 'Meiryo', sans-serif";
+    ctx.fillText(battle.enemyName, W/2, 60);
+    var bw = 220, bx = W/2 - bw/2, by = 72;
+    ctx.fillStyle = "#2a2f3c";
+    roundRect(bx, by, bw, 12, 6); ctx.fill();
+    var r = Math.max(0, battle.ehp / battle.emaxhp);
+    ctx.fillStyle = r > 0.3 ? COL.bad : "#ff4040";
+    roundRect(bx, by, bw * r, 12, 6); ctx.fill();
+    ctx.textAlign = "left";
+
+    // 自分のステータスパネル（左下）
+    var sx = 20, sy = H - 150, sw = 240, sh = 96;
+    panel(sx, sy, sw, sh);
+    ctx.fillStyle = COL.accent;
+    ctx.font = "16px 'Meiryo', sans-serif";
+    ctx.fillText("ぼうけんしゃ", sx + 16, sy + 26);
+    ctx.font = "15px 'Meiryo', sans-serif";
+    ctx.fillStyle = COL.text;
+    // HP バー
+    ctx.fillText("HP", sx + 16, sy + 52);
+    barMini(sx + 50, sy + 42, 150, hero.hp / hero.maxhp, COL.good);
+    ctx.fillStyle = COL.text;
+    ctx.fillText(hero.hp + "/" + hero.maxhp, sx + 50, sy + 72);
+    // MP（スペースの都合でバーは置かず、HP の数値と同じ行に文字だけで出す）
+    ctx.fillStyle = "#8bb8ff";
+    ctx.fillText("MP " + hero.mp + "/" + hero.maxmp, sx + 130, sy + 72);
+
+    // ログウィンドウ（下中央〜右）
+    var lx = 280, ly = H - 150, lw = W - 280 - 20, lh = 96;
+    panel(lx, ly, lw, lh);
+    ctx.fillStyle = COL.text;
+    ctx.font = "16px 'Meiryo', sans-serif";
+    for (var i = 0; i < battle.log.length; i++) {
+      ctx.fillText(battle.log[i], lx + 16, ly + 26 + i * 20);
+    }
+
+    // コマンドウィンドウ（結果でなければ）
+    if (battle.phase === "cmd" && battle.busy <= 0) {
+      drawBattleCmd();
+    } else if (battle.phase === "result" && battle.busy <= 0) {
+      ctx.textAlign = "center";
+      ctx.fillStyle = COL.accent;
+      ctx.font = "14px sans-serif";
+      ctx.fillText("A / B で つづける", W/2, H - 20);
+      ctx.textAlign = "left";
+    }
+  }
+
+  function barMini(x, y, w, ratio, color) {
+    ctx.fillStyle = "#2a2f3c";
+    roundRect(x, y, w, 10, 5); ctx.fill();
+    ctx.fillStyle = color;
+    roundRect(x, y, w * Math.max(0, ratio), 10, 5); ctx.fill();
+  }
+
+  function drawBattleCmd() {
+    var cw = 220, ch = 30 + BATTLE_CMDS.length * 30;
+    var cx = W - cw - 20, cy = H - 150 - ch - 8;
+    panel(cx, cy, cw, ch);
+    ctx.font = "18px 'Meiryo', sans-serif";
+    ctx.textAlign = "left";
+    for (var i = 0; i < BATTLE_CMDS.length; i++) {
+      var y = cy + 30 + i * 30;
+      if (i === battle.cursor) {
+        ctx.fillStyle = "rgba(244,163,64,0.18)";
+        roundRect(cx + 8, y - 20, cw - 16, 26, 5); ctx.fill();
+        ctx.fillStyle = COL.accent;
+        ctx.beginPath();
+        ctx.moveTo(cx + 16, y - 12);
+        ctx.lineTo(cx + 16, y - 2);
+        ctx.lineTo(cx + 24, y - 7);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = COL.accent2;
+      } else {
+        ctx.fillStyle = COL.text;
+      }
+      ctx.fillText(BATTLE_CMDS[i], cx + 34, y);
+    }
+  }
+
+  /* ============================================================
+     ゲームオーバー描画
+     ============================================================ */
+  function drawGameOver() {
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = "center";
+    ctx.fillStyle = COL.bad;
+    ctx.font = "bold 46px 'Meiryo', sans-serif";
+    ctx.fillText("ゲームオーバー", W/2, H/2 - 20);
+    ctx.fillStyle = COL.text;
+    ctx.font = "18px 'Meiryo', sans-serif";
+    ctx.fillText("あなたは ちからつきた…", W/2, H/2 + 20);
+    ctx.fillStyle = COL.accent;
+    ctx.font = "16px sans-serif";
+    if ((Date.now() % 1000) < 650)
+      ctx.fillText("Start / Enter / A で やりなおす", W/2, H/2 + 60);
+    ctx.textAlign = "left";
+  }
+
+  /* ============================================================
+     HUD（右上）— コントローラの生の入力状態
+     反転・遅延・連打・アナログ変換が目で見えるように正確に作る
+     ============================================================ */
+  function drawHUD() {
+    var hw = 250, hh = 168;
+    var hx = W - hw - 10, hy = 10;
+    // 背景
+    ctx.fillStyle = "rgba(10,12,18,0.86)";
+    roundRect(hx, hy, hw, hh, 8); ctx.fill();
+    ctx.strokeStyle = COL.line; ctx.lineWidth = 1;
+    roundRect(hx, hy, hw, hh, 8); ctx.stroke();
+
+    // タイトルと id（いまどちらの経路を使っているか）
+    var usingWs = wsFresh();
+    var gp = usingWs ? null : getActiveGamepad();
+    ctx.textAlign = "left";
+    ctx.fillStyle = COL.accent;
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillText(usingWs ? "GAMEPAD HUD — WS" : "GAMEPAD HUD — Gamepad API", hx + 10, hy + 16);
+
+    ctx.font = "10px monospace";
+    var listY = hy + 44;
+    if (usingWs) {
+      ctx.fillStyle = COL.accent2;
+      ctx.fillText("WebSocket 入力 (LLMCon)", hx + 10, hy + 30);
+      ctx.font = "9px monospace";
+      ctx.fillStyle = wsPad.connected ? COL.good : COL.bad;
+      ctx.fillText((wsPad.connected ? "● つながっている " : "× きれている ") + wsPad.host, hx + 10, listY);
+      ctx.fillStyle = COL.dim;
+      ctx.fillText("Gamepad API は待機中", hx + 10, listY + 11);
+    } else {
+      ctx.fillStyle = COL.dim;
+      ctx.fillText(gp ? ("[" + gp.index + "] " + shortId(gp.id)) : "なし (キーボード操作)", hx + 10, hy + 30);
+
+      // 接続中パッド一覧（複数対応）と操作対象の印
+      var plist = listPads();
+      ctx.font = "9px monospace";
+      if (plist.length === 0) {
+        ctx.fillText("接続なし — ボタンを押してください", hx + 10, listY);
+      } else {
+        for (var i = 0; i < plist.length && i < 2; i++) {
+          var isAct = plist[i].index === activePad;
+          ctx.fillStyle = isAct ? COL.accent2 : COL.dim;
+          var mark = isAct ? "▶" : "  ";
+          ctx.fillText(mark + " [" + plist[i].index + "] " + shortId(plist[i].id, 22), hx + 10, listY + i * 11);
+        }
+      }
+      // WebSocket の状態も 1 行出す（pad が届けばそちらへ自動で切り替わる）
+      ctx.fillStyle = "#5b6579";
+      ctx.fillText((wsPad.connected ? "WS つながっている (pad 待ち) " : "WS きれている ") + wsPad.host, hx + 10, listY + 22);
+    }
+
+    // ボタンランプ（押されると光る）
+    var by = hy + 84;
+    var labels = ["A","B","X","Y","LB","RB"];
+    var states = input.rawBtn ? [input.rawBtn.A, input.rawBtn.B, input.rawBtn.X, input.rawBtn.Y, input.rawBtn.LB, input.rawBtn.RB]
+                              : [false,false,false,false,false,false];
+    // ランプはパッドの生の状態のみを映す（反転・遅延・連打を確認するため、キーボードでは光らせない）
+    for (var j = 0; j < labels.length; j++) {
+      var lx = hx + 12 + j * 32;
+      lamp(lx, by, labels[j], states[j]);
+    }
+
+    // トリガー（アナログ）バー LT / RT
+    var ty = by + 34;
+    ctx.fillStyle = COL.dim;
+    ctx.font = "9px sans-serif";
+    ctx.fillText("LT", hx + 12, ty + 8);
+    triggerBar(hx + 30, ty, 70, input.lt);
+    ctx.fillStyle = COL.dim;
+    ctx.fillText("RT", hx + 112, ty + 8);
+    triggerBar(hx + 130, ty, 70, input.rt);
+
+    // 十字キー（押されると光る）
+    var dpx = hx + 24, dpy = ty + 30;
+    drawDpadHUD(dpx, dpy, input.dpad);
+
+    // 左スティック（丸で位置を示す）— アナログの効きが見える
+    var stx = hx + 150, sty = ty + 44;
+    drawStickHUD(stx, sty, input.ax, input.ay);
+  }
+
+  function shortId(id, max) {
+    max = max || 30;
+    if (!id) return "?";
+    // "Xbox 360 Controller (XInput STANDARD GAMEPAD)" のような括弧付きは前半を使う
+    var s = id;
+    var p = s.indexOf("(");
+    if (p > 0) s = s.slice(0, p).trim();
+    if (s.length > max) s = s.slice(0, max - 1) + "…";
+    return s;
+  }
+
+  function lamp(x, y, label, on) {
+    // 枠
+    ctx.strokeStyle = on ? COL.accent : COL.line;
+    ctx.fillStyle = on ? "rgba(244,163,64,0.9)" : "rgba(40,46,60,0.6)";
+    roundRect(x, y, 26, 20, 5); ctx.fill();
+    roundRect(x, y, 26, 20, 5); ctx.stroke();
+    ctx.fillStyle = on ? "#20150a" : COL.dim;
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(label, x + 13, y + 14);
+    ctx.textAlign = "left";
+  }
+
+  function triggerBar(x, y, w, v) {
+    ctx.fillStyle = "#20242e";
+    roundRect(x, y, w, 10, 4); ctx.fill();
+    var c = v > 0.02 ? COL.accent : "#20242e";
+    ctx.fillStyle = c;
+    roundRect(x, y, w * Math.min(1, Math.max(0, v)), 10, 4); ctx.fill();
+    // 数値
+    ctx.fillStyle = COL.dim;
+    ctx.font = "8px monospace";
+    ctx.fillText(v.toFixed(2), x + w - 22, y + 8);
+  }
+
+  function drawDpadHUD(cx, cy, d) {
+    var s = 12; // セルサイズ
+    function cell(dx, dy, on) {
+      ctx.fillStyle = on ? COL.accent : "rgba(40,46,60,0.7)";
+      ctx.strokeStyle = COL.line;
+      var x = cx + dx * (s + 1) - s/2, y = cy + dy * (s + 1) - s/2;
+      ctx.fillRect(x, y, s, s);
+      ctx.strokeRect(x, y, s, s);
+    }
+    cell(0, -1, d.up);
+    cell(0,  1, d.down);
+    cell(-1, 0, d.left);
+    cell(1,  0, d.right);
+    // 中心
+    ctx.fillStyle = "rgba(40,46,60,0.7)";
+    ctx.fillRect(cx - s/2, cy - s/2, s, s);
+    ctx.fillStyle = COL.dim;
+    ctx.font = "8px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("十字", cx, cy + 30);
+    ctx.textAlign = "left";
+  }
+
+  function drawStickHUD(cx, cy, ax, ay) {
+    var R = 22;
+    // 外枠
+    ctx.strokeStyle = COL.line;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.stroke();
+    // デッドゾーンの目安（0.4）
+    ctx.strokeStyle = "rgba(244,163,64,0.25)";
+    ctx.beginPath(); ctx.arc(cx, cy, R * 0.4, 0, Math.PI*2); ctx.stroke();
+    // 十字線
+    ctx.strokeStyle = "rgba(120,130,150,0.2)";
+    ctx.beginPath();
+    ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy);
+    ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R);
+    ctx.stroke();
+    // 位置の丸
+    var px = cx + ax * R, py = cy + ay * R;
+    var active = (Math.abs(ax) > 0.4 || Math.abs(ay) > 0.4);
+    ctx.fillStyle = active ? COL.accent : "#9aa3b8";
+    ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI*2); ctx.fill();
+    // ラベルと数値
+    ctx.fillStyle = COL.dim;
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("L-Stick", cx, cy + R + 12);
+    ctx.fillText(ax.toFixed(2) + "," + ay.toFixed(2), cx, cy + R + 22);
+    ctx.textAlign = "left";
+  }
+
+  /* ============================================================
+     「コントローラのボタンを押してください」オーバーレイ
+     ============================================================ */
+  function drawConnectPrompt() {
+    // パッドを一度も検出していない かつ 今も無い場合に出す
+    if (wsFresh()) return;   // WebSocket から届いていれば不要
+    if (getActiveGamepad()) return;   // 今つながっているパッドがあれば不要
+    // うっすら暗くする（プレイは可能なので邪魔しすぎない）
+    ctx.fillStyle = "rgba(8,10,15,0.55)";
+    ctx.fillRect(0, H - 70, W, 70);
+    ctx.textAlign = "center";
+    ctx.fillStyle = COL.accent;
+    ctx.font = "bold 18px 'Meiryo', sans-serif";
+    var blink = (Date.now() % 1200) < 800;
+    if (blink)
+      ctx.fillText("コントローラのボタンを押してください / press a controller button", W/2, H - 40);
+    ctx.fillStyle = COL.dim;
+    ctx.font = "12px sans-serif";
+    ctx.fillText("（キーボードでも遊べます：矢印/WASD, Z=A, X=B, Enter=Start）", W/2, H - 18);
+    ctx.textAlign = "left";
+  }
+
+  /* ============================================================
+     メインの描画
+     ============================================================ */
+  function draw() {
+    // 全体クリア
+    ctx.fillStyle = COL.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    if (mode === MODE.BATTLE && battle) {
+      drawBattle();
+    } else {
+      drawField();
+      if (mode === MODE.MSG) drawMessageWindow();
+      if (mode === MODE.MENU) drawMenu();
+      if (mode === MODE.STATUS) drawStatus();
+      if (mode === MODE.OVER) drawGameOver();
+    }
+
+    // HUD は常時（戦闘中も）表示 — コントローラ確認が主眼のため
+    drawHUD();
+
+    // 接続プロンプト
+    drawConnectPrompt();
+  }
+
+  /* ============================================================
+     メインループ
+     ============================================================ */
+  var last = performance.now();
+  function loop(now) {
+    var dt = (now - last) / 1000;
+    if (dt > 0.1) dt = 0.1; // 大きなフレーム飛びを抑制
+    last = now;
+
+    pollInput();
+    handleInput(dt);
+    update(dt);
+    draw();
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+})();
+</script>

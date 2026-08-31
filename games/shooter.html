@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>インベーダー風シューティング</title>
+<style>
+  :root{
+    --bg:#0e1016;
+    --panel:#161a24;
+    --panel2:#1d2230;
+    --ink:#e8ecf5;
+    --dim:#8b94a7;
+    --amber:#f4a340;
+    --green:#5be09a;
+    --red:#ff5a6a;
+    --line:#2a3142;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Segoe UI",Meiryo,system-ui,sans-serif;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+  header{
+    width:100%;
+    max-width:900px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 20px 6px;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  header h1{
+    font-size:20px;
+    margin:0;
+    letter-spacing:.5px;
+    font-weight:700;
+  }
+  header h1 .amb{color:var(--amber)}
+  header a{color:var(--amber);text-decoration:none;font-size:14px}
+  header a:hover{text-decoration:underline}
+  .stage{
+    position:relative;
+    width:820px;
+    max-width:96vw;
+    margin:6px auto 20px;
+  }
+  canvas{
+    display:block;
+    width:820px;
+    height:500px;
+    max-width:96vw;
+    background:#080a10;
+    border:1px solid var(--line);
+    border-radius:10px;
+    box-shadow:0 8px 40px rgba(0,0,0,.5);
+    touch-action:none;
+  }
+  /* HUD overlay (top-right) drawn as DOM for crispness */
+  .hud{
+    position:absolute;
+    top:10px;
+    right:10px;
+    width:224px;
+    background:rgba(20,24,34,.86);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:8px 9px;
+    font-size:11px;
+    line-height:1.35;
+    color:var(--dim);
+    backdrop-filter:blur(2px);
+    user-select:none;
+    pointer-events:none;
+  }
+  .hud .pid{
+    color:var(--ink);
+    font-size:11px;
+    word-break:break-all;
+    margin-bottom:6px;
+    max-height:44px;
+    overflow:hidden;
+  }
+  .hud .pid b{color:var(--amber);font-weight:600}
+  .hud .src{
+    font-size:10px;
+    margin-bottom:6px;
+    padding:2px 5px;
+    border-radius:4px;
+    background:var(--panel2);
+    border:1px solid var(--line);
+    color:var(--dim);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .hud .src.ws{color:var(--green);border-color:rgba(91,224,154,.5)}
+  .hud .src.wsdown{color:var(--red);border-color:rgba(255,90,106,.5)}
+  .hud .btnrow{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+  .hud .chip{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:26px;
+    padding:2px 4px;
+    border-radius:5px;
+    background:var(--panel2);
+    border:1px solid var(--line);
+    color:var(--dim);
+    font-size:10px;
+    font-weight:600;
+    transition:background .04s,color .04s,border-color .04s;
+  }
+  .hud .chip.on{
+    background:var(--amber);
+    color:#1a1204;
+    border-color:var(--amber);
+    box-shadow:0 0 8px rgba(244,163,64,.6);
+  }
+  .hud .chip.trig.on{background:var(--green);border-color:var(--green);color:#04160c;box-shadow:0 0 8px rgba(91,224,154,.55)}
+  .hud .stickwrap{display:flex;align-items:center;gap:8px;margin-top:2px}
+  .hud .stick{
+    position:relative;
+    width:52px;height:52px;
+    border-radius:50%;
+    background:var(--panel);
+    border:1px solid var(--line);
+    flex:0 0 auto;
+  }
+  .hud .stick .cross{position:absolute;background:var(--line)}
+  .hud .stick .cx{left:0;right:0;top:50%;height:1px}
+  .hud .stick .cy{top:0;bottom:0;left:50%;width:1px}
+  .hud .stick .dot{
+    position:absolute;width:9px;height:9px;border-radius:50%;
+    background:var(--amber);left:50%;top:50%;
+    transform:translate(-50%,-50%);
+    box-shadow:0 0 6px rgba(244,163,64,.7);
+  }
+  .hud .stickval{font-size:10px;color:var(--dim)}
+  .hud .padlist{margin-top:6px;border-top:1px solid var(--line);padding-top:5px}
+  .hud .padlist .pl{color:var(--dim);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hud .padlist .pl.sel{color:var(--green)}
+  .hud .padlist .pl b{color:var(--amber)}
+  /* center message overlay */
+  .msg{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    gap:10px;
+    pointer-events:none;
+  }
+  .msg .box{
+    background:rgba(14,16,22,.82);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:22px 30px;
+    max-width:80%;
+  }
+  .msg h2{margin:0 0 8px;font-size:26px;color:var(--amber)}
+  .msg p{margin:4px 0;color:var(--ink);font-size:15px}
+  .msg .sub{color:var(--dim);font-size:13px}
+  .msg .blink{animation:bl 1s steps(2,start) infinite}
+  @keyframes bl{50%{opacity:.25}}
+  footer{
+    color:var(--dim);
+    font-size:12px;
+    padding:0 20px 24px;
+    max-width:900px;
+    text-align:center;
+    line-height:1.6;
+  }
+  footer b{color:var(--ink);font-weight:600}
+  kbd{
+    background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:4px;padding:1px 5px;font-size:11px;color:var(--ink);font-family:inherit;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="amb">▲</span> インベーダー風 <span class="amb">シューティング</span></h1>
+  <a href="index.html">← ランチャー</a>
+</header>
+
+<div class="stage">
+  <canvas id="cv" width="820" height="500"></canvas>
+
+  <!-- 生入力 HUD -->
+  <div class="hud" id="hud">
+    <div class="pid">使用中: <b id="hudId">なし</b></div>
+    <div class="src" id="hudSrc">経路: Gamepad API</div>
+    <div class="btnrow" id="btnrow">
+      <span class="chip" data-b="A">A</span>
+      <span class="chip" data-b="B">B</span>
+      <span class="chip" data-b="X">X</span>
+      <span class="chip" data-b="Y">Y</span>
+      <span class="chip" data-b="LB">LB</span>
+      <span class="chip" data-b="RB">RB</span>
+      <span class="chip trig" data-b="LT">LT</span>
+      <span class="chip trig" data-b="RT">RT</span>
+      <span class="chip" data-b="↑">↑</span>
+      <span class="chip" data-b="↓">↓</span>
+      <span class="chip" data-b="←">←</span>
+      <span class="chip" data-b="→">→</span>
+    </div>
+    <div class="stickwrap">
+      <div class="stick" id="stick">
+        <div class="cross cx"></div>
+        <div class="cross cy"></div>
+        <div class="dot" id="stickDot"></div>
+      </div>
+      <div class="stickval" id="stickVal">L: 0.00, 0.00</div>
+    </div>
+    <div class="padlist" id="padlist"></div>
+  </div>
+
+  <!-- 中央メッセージ -->
+  <div class="msg" id="msg">
+    <div class="box" id="msgBox">
+      <h2 id="msgTitle">コントローラを接続</h2>
+      <p id="msgText" class="blink">コントローラのボタンを押してください</p>
+      <p class="sub">press a controller button</p>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <b>操作:</b> 移動＝左スティック / 十字 / <kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd>
+  ショット＝<kbd>A</kbd>ボタン（押しっぱなしで連射）/ <kbd>Z</kbd>
+  リスタート＝<kbd>Start</kbd> / <kbd>Enter</kbd>
+  操作パッド切替＝<kbd>Back</kbd>(ボタン8)<br>
+  入力は WebSocket（LLMCon から直接）を優先し、届いていないあいだは W3C Gamepad API（Xbox360 標準マッピング）を使います。
+  接続先は既定で <b>ws://127.0.0.1:8777/vcon/ws</b>、<b>?ws=ホスト:ポート</b> で変更できます。
+  いま使っている経路と入力状態は右上 HUD に表示します。
+</footer>
+
+<script>
+"use strict";
+(function(){
+  //====================================================================
+  // キャンバス
+  //====================================================================
+  const cv = document.getElementById("cv");
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+
+  //====================================================================
+  // 入力: ゲームパッド + キーボード
+  //====================================================================
+  // Xbox360 標準マッピングのボタン番号
+  const BTN = {
+    A:0, B:1, X:2, Y:3, LB:4, RB:5, LT:6, RT:7,
+    BACK:8, START:9, LS:10, RS:11,
+    DUP:12, DDOWN:13, DLEFT:14, DRIGHT:15
+  };
+  const AXIS_DEAD = 0.4;   // |軸|>0.4 を方向とみなす
+  const TRIG_TH = 0.5;     // トリガーの pressed 判定しきい値（value ベース）
+
+  // 接続中パッドの index 一覧と、現在の操作対象
+  let selectedPadIndex = null;   // 実際に使うパッドの index
+  let lastActivePadIndex = null; // 最後に入力のあったパッド（既定選択に使う）
+
+  // パッドから読み取った統一入力状態（今フレーム）
+  const padState = {
+    connected:false,
+    id:"",
+    // 生ボタン: 名前 -> {pressed:bool, value:number}
+    raw:{},
+    axLX:0, axLY:0,
+    source:"none"   // "ws" | "gamepad" | "none"
+  };
+
+  //--------------------------------------------------------------------
+  // WebSocket 経路（LLMCon から最終出力の状態を直接受け取る）
+  //   ブラウザの Gamepad API を通さないので、パッドの取り違えが起きず、
+  //   タブからフォーカスが外れても入力が届き、改変ルールの効果もそのまま届く。
+  //--------------------------------------------------------------------
+  const WS_FRESH_MS = 2000;   // この時間内に "pad" を受けていれば WebSocket 優先
+  const WS_RETRY_MS = 3000;   // 再接続の間隔
+
+  const wsPad = {
+    btn: Object.create(null),   // ボタン名 -> true
+    lx:0, ly:0, rx:0, ry:0, lt:0, rt:0,
+    lastMs: -1e9                // 最後に "pad" を受け取った時刻
+  };
+  let wsSock = null;
+  let wsConnected = false;
+  let wsRetryTimer = 0;
+
+  function wsEndpoint(){
+    // (a) ?ws=host:port → (b) location.host → (c) 既定
+    let host = "";
+    try{
+      const m = /[?&]ws=([^&#]+)/.exec(location.search || "");
+      if(m){
+        try{ host = decodeURIComponent(m[1]); }catch(e){ host = m[1]; }
+      }
+      if(!host) host = location.host || "";
+    }catch(e){ host = ""; }   // location を読めない置かれ方でも既定で動かす
+    if(!host) host = "127.0.0.1:8777";
+    return "ws://" + host + "/vcon/ws";
+  }
+  const WS_URL = wsEndpoint();
+
+  function num(v){
+    const n = typeof v === "number" ? v : parseFloat(v);
+    return isFinite(n) ? n : 0;
+  }
+  function clamp1(v){ return v < -1 ? -1 : (v > 1 ? 1 : v); }
+  function clamp01(v){ return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+  function wsHandleMessage(data){
+    // 同じ口には "reload" や {"t":"miclvl",...} も流れてくる。"pad" だけ扱う。
+    if(typeof data !== "string") return;
+    const s = data.trim();
+    if(!s || s.charAt(0) !== "{") return;
+    let m = null;
+    try{ m = JSON.parse(s); }catch(e){ return; }
+    if(!m || m.t !== "pad") return;
+
+    const set = Object.create(null);
+    if(Array.isArray(m.buttons)){
+      for(const b of m.buttons){ if(typeof b === "string") set[b] = true; }
+    }
+    wsPad.btn = set;
+    wsPad.lx = clamp1(num(m.lx));
+    wsPad.ly = clamp1(num(m.ly));
+    wsPad.rx = clamp1(num(m.rx));
+    wsPad.ry = clamp1(num(m.ry));
+    wsPad.lt = clamp01(num(m.lt));
+    wsPad.rt = clamp01(num(m.rt));
+    wsPad.lastMs = Date.now();
+  }
+
+  function wsScheduleRetry(){
+    if(wsRetryTimer) return;
+    wsRetryTimer = setTimeout(function(){ wsRetryTimer = 0; wsConnect(); }, WS_RETRY_MS);
+  }
+
+  function wsConnect(){
+    if(typeof WebSocket === "undefined") return;   // 使えない環境でも遊べるように
+    let sock = null;
+    try{ sock = new WebSocket(WS_URL); }
+    catch(e){ wsScheduleRetry(); return; }
+    wsSock = sock;
+    sock.onopen = function(){ if(wsSock === sock) wsConnected = true; };
+    sock.onmessage = function(ev){ if(wsSock === sock) wsHandleMessage(ev.data); };
+    sock.onerror = function(){ /* onclose が続くのでここでは何もしない */ };
+    sock.onclose = function(){
+      if(wsSock !== sock) return;
+      wsConnected = false;
+      wsSock = null;
+      wsScheduleRetry();
+    };
+  }
+  try{ wsConnect(); }catch(e){ /* ゲームの動作は妨げない */ }
+
+  function wsFresh(){ return (Date.now() - wsPad.lastMs) < WS_FRESH_MS; }
+
+  // キーボード状態
+  const keys = Object.create(null);
+  window.addEventListener("keydown", e=>{
+    // ゲームで使うキーはスクロール等を止める
+    if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," "].includes(e.key)) e.preventDefault();
+    keys[e.key.toLowerCase()] = true;
+    if(e.key==="Enter") keys["enter"]=true;
+  }, {passive:false});
+  window.addEventListener("keyup", e=>{
+    keys[e.key.toLowerCase()] = false;
+    if(e.key==="Enter") keys["enter"]=false;
+  });
+
+  // gamepad 接続/切断
+  window.addEventListener("gamepadconnected", (e)=>{
+    lastActivePadIndex = e.gamepad.index;
+    if(selectedPadIndex===null) selectedPadIndex = e.gamepad.index;
+  });
+  window.addEventListener("gamepaddisconnected", (e)=>{
+    if(selectedPadIndex===e.gamepad.index) selectedPadIndex = null;
+    if(lastActivePadIndex===e.gamepad.index) lastActivePadIndex = null;
+  });
+
+  function getPads(){
+    const gp = navigator.getGamepads ? navigator.getGamepads() : [];
+    const out = [];
+    for(let i=0;i<gp.length;i++){ if(gp[i]) out.push(gp[i]); }
+    return out;
+  }
+
+  // パッドが「はっきりした入力」を出しているか（自動追従・検出用）。
+  //   2 = いずれかのボタン(0..15)が pressed（ドリフトしない・最優先）
+  //   1 = 左スティックが大きく倒れている（|axes[0]|>0.6 か |axes[1]|>0.6）
+  //   0 = 実質的な入力なし（わずかなドリフト含む）
+  const AUTO_STICK_TH = 0.6;   // スティックでの自動追従しきい値
+  function padClearInput(gp){
+    const n = Math.min(gp.buttons.length, 16);
+    for(let i=0;i<n;i++){
+      const b = gp.buttons[i];
+      if(b && b.pressed) return 2;   // ボタン優先
+    }
+    const ax0 = gp.axes.length>0 ? gp.axes[0] : 0;
+    const ax1 = gp.axes.length>1 ? gp.axes[1] : 0;
+    if(Math.abs(ax0)>AUTO_STICK_TH || Math.abs(ax1)>AUTO_STICK_TH) return 1;
+    return 0;
+  }
+
+  // 今フレームの入力を集約する。padState を更新し、統一 unified 入力も返す。
+  // エッジ検出のため prev を保持する。
+  let prevUnified = null;
+
+  function readInput(){
+    const useWs = wsFresh();
+
+    // 統一入力（キーボード + パッド OR）
+    const u = {
+      left:false, right:false, up:false, down:false,
+      shoot:false, start:false, back:false,
+      moveX:0 // -1..1 連続移動量
+    };
+
+    if(useWs) readFromWs(); else readFromGamepad();
+
+    // --- パッド由来の状態を統一入力へ（経路によらず同じ扱い） ---
+    if(padState.connected){
+      const r = padState.raw;
+      const rp = k => !!(r[k] && r[k].p);
+      const ax0 = padState.axLX;
+
+      // 移動: 十字 OR 左スティック（|軸|>0.4）
+      if(rp("LEFT")  || ax0 < -AXIS_DEAD) u.left = true;
+      if(rp("RIGHT") || ax0 >  AXIS_DEAD) u.right = true;
+      if(rp("UP")) u.up = true;
+      if(rp("DOWN")) u.down = true;
+
+      // 連続移動量: スティックを優先、無ければ十字
+      if(Math.abs(ax0) > AXIS_DEAD){ u.moveX = ax0; }
+      else if(rp("LEFT")){ u.moveX = -1; }
+      else if(rp("RIGHT")){ u.moveX = 1; }
+
+      // ショット = A ボタン
+      if(rp("A")) u.shoot = true;
+      if(rp("START")) u.start = true;
+      if(rp("BACK")) u.back = true;
+    }
+
+    return finishInput(u);
+  }
+
+  // WebSocket から届いた最終出力の状態を padState に写す
+  function readFromWs(){
+    const on = k => !!wsPad.btn[k];
+    padState.source = "ws";
+    padState.connected = true;
+    padState.id = "WebSocket (LLMCon)";
+    padState.raw = {
+      A:{p:on("A"), v:on("A")?1:0},
+      B:{p:on("B"), v:on("B")?1:0},
+      X:{p:on("X"), v:on("X")?1:0},
+      Y:{p:on("Y"), v:on("Y")?1:0},
+      LB:{p:on("LB"), v:on("LB")?1:0},
+      RB:{p:on("RB"), v:on("RB")?1:0},
+      // トリガーはアナログ値。しきい値で pressed 相当にする
+      LT:{p:wsPad.lt > TRIG_TH, v:wsPad.lt},
+      RT:{p:wsPad.rt > TRIG_TH, v:wsPad.rt},
+      LS:{p:on("LS")}, RS:{p:on("RS")}, GUIDE:{p:on("Guide")},
+      UP:{p:on("DUp")}, DOWN:{p:on("DDown")},
+      LEFT:{p:on("DLeft")}, RIGHT:{p:on("DRight")},
+      START:{p:on("Start")}, BACK:{p:on("Back")}
+    };
+    // ly は上が正。Gamepad API と同じ「下が正」に揃える
+    padState.axLX = wsPad.lx;
+    padState.axLY = -wsPad.ly;
+  }
+
+  function readFromGamepad(){
+    const pads = getPads();
+
+    // --- 自動追従: ユーザが今まさに使っているパッドに操作対象を切り替える ---
+    // 全パッドを走査し、はっきり入力しているものを探す。ボタンを押している
+    // パッドを最優先（ボタンはドリフトしない）。次点で左スティックが大きく
+    // 倒れているパッド。わずかなスティックのドリフトでは切り替えない。
+    // これは手動選択(Back)より優先＝常に「最後にはっきり入力したパッド」を操作対象にする。
+    let btnPadIndex = null, stickPadIndex = null;
+    for(const gp of pads){
+      const lvl = padClearInput(gp);
+      if(lvl===2){ if(btnPadIndex===null) btnPadIndex = gp.index; }
+      else if(lvl===1){ if(stickPadIndex===null) stickPadIndex = gp.index; }
+    }
+    const activeInputIndex = (btnPadIndex!==null) ? btnPadIndex : stickPadIndex;
+    if(activeInputIndex!==null){
+      selectedPadIndex = activeInputIndex;
+      lastActivePadIndex = activeInputIndex;
+    }
+
+    // 既定選択: まだどのパッドも入力していなければ先頭の接続パッドを暫定操作対象に
+    if(selectedPadIndex===null && pads.length){
+      selectedPadIndex = pads[0].index;
+    }
+    // 選択パッドが消えていたら先頭にフォールバック
+    if(selectedPadIndex!==null && !pads.some(p=>p.index===selectedPadIndex)){
+      selectedPadIndex = pads.length ? pads[0].index : null;
+    }
+
+    // 選択パッドを取得
+    let gp = null;
+    if(selectedPadIndex!==null){
+      gp = pads.find(p=>p.index===selectedPadIndex) || null;
+    }
+
+    // padState 更新
+    padState.source = "gamepad";
+    padState.connected = !!gp;
+    padState.id = gp ? gp.id : "";
+    padState.raw = {};
+    padState.axLX = 0; padState.axLY = 0;
+
+    // --- パッド ---
+    if(gp){
+      const b = gp.buttons;
+      function bp(idx){ return b[idx] ? !!b[idx].pressed : false; }
+      function bv(idx){ return b[idx] ? (b[idx].value||0) : 0; }
+
+      // 生状態を HUD 用に格納
+      padState.raw = {
+        A:{p:bp(BTN.A),v:bv(BTN.A)},
+        B:{p:bp(BTN.B),v:bv(BTN.B)},
+        X:{p:bp(BTN.X),v:bv(BTN.X)},
+        Y:{p:bp(BTN.Y),v:bv(BTN.Y)},
+        LB:{p:bp(BTN.LB),v:bv(BTN.LB)},
+        RB:{p:bp(BTN.RB),v:bv(BTN.RB)},
+        // トリガーは value ベース（アナログ）。pressed も併用
+        LT:{p:(bp(BTN.LT)||bv(BTN.LT)>TRIG_TH),v:bv(BTN.LT)},
+        RT:{p:(bp(BTN.RT)||bv(BTN.RT)>TRIG_TH),v:bv(BTN.RT)},
+        LS:{p:bp(BTN.LS)},
+        RS:{p:bp(BTN.RS)},
+        UP:{p:bp(BTN.DUP)},
+        DOWN:{p:bp(BTN.DDOWN)},
+        LEFT:{p:bp(BTN.DLEFT)},
+        RIGHT:{p:bp(BTN.DRIGHT)},
+        START:{p:bp(BTN.START)},
+        BACK:{p:bp(BTN.BACK)}
+      };
+      padState.axLX = gp.axes.length>0 ? gp.axes[0] : 0;
+      padState.axLY = gp.axes.length>1 ? gp.axes[1] : 0;
+    }
+  }
+
+  // キーボードの合成とエッジ検出（経路によらず共通）
+  function finishInput(u){
+    // --- キーボード（代替） ---
+    const kl = keys["arrowleft"]||keys["a"];
+    const kr = keys["arrowright"]||keys["d"];
+    if(kl) u.left = true;
+    if(kr) u.right = true;
+    if(keys["arrowup"]||keys["w"]) u.up = true;
+    if(keys["arrowdown"]||keys["s"]) u.down = true;
+    if(u.moveX===0){
+      if(kl && !kr) u.moveX = -1;
+      else if(kr && !kl) u.moveX = 1;
+    }
+    if(keys["z"]||keys[" "]) u.shoot = true;   // Z / Space = A
+    if(keys["enter"]) u.start = true;
+    // Back 相当キー（Shift）でパッド切替も許可
+    if(keys["shift"]) u.back = true;
+
+    // エッジ検出
+    u.edge = {
+      shoot: u.shoot && !(prevUnified && prevUnified.shoot),
+      start: u.start && !(prevUnified && prevUnified.start),
+      back:  u.back  && !(prevUnified && prevUnified.back)
+    };
+    prevUnified = u;
+    return u;
+  }
+
+  //====================================================================
+  // HUD 描画（DOM）
+  //====================================================================
+  const hudId = document.getElementById("hudId");
+  const hudSrc = document.getElementById("hudSrc");
+  const stickDot = document.getElementById("stickDot");
+  const stickVal = document.getElementById("stickVal");
+  const padlistEl = document.getElementById("padlist");
+  const chips = {};
+  document.querySelectorAll("#btnrow .chip").forEach(el=>{
+    chips[el.dataset.b] = el;
+  });
+  // ラベルと raw キーの対応
+  const chipMap = {
+    "A":"A","B":"B","X":"X","Y":"Y","LB":"LB","RB":"RB",
+    "LT":"LT","RT":"RT","↑":"UP","↓":"DOWN","←":"LEFT","→":"RIGHT"
+  };
+
+  function updateHud(){
+    const useWs = padState.source === "ws";
+    hudId.textContent = useWs ? padState.id
+                       : (padState.connected ? ("#"+selectedPadIndex+"  "+padState.id) : "なし");
+    // 入力経路の表示
+    if(useWs){
+      hudSrc.textContent = "経路: WebSocket " + (wsConnected ? "接続中" : "切断（再接続中）");
+      hudSrc.className = "src " + (wsConnected ? "ws" : "wsdown");
+    } else {
+      hudSrc.textContent = "経路: Gamepad API"
+        + (wsConnected ? "（WebSocket 接続中・入力待ち）" : "（WebSocket 切断）");
+      hudSrc.className = "src";
+    }
+    const r = padState.raw;
+    for(const label in chipMap){
+      if(!chips[label]) continue;
+      const key = chipMap[label];
+      const st = r[key];
+      const on = st && st.p;
+      chips[label].classList.toggle("on", !!on);
+      // トリガーは value を数値表示。値が無いときは古い数字を残さず名前だけに戻す
+      if(label==="LT" || label==="RT"){
+        chips[label].textContent = (st && typeof st.v === "number")
+          ? (label+" "+st.v.toFixed(1))
+          : label;
+      }
+    }
+    // スティック位置（±26px 範囲）
+    const px = Math.max(-1,Math.min(1,padState.axLX))*22;
+    const py = Math.max(-1,Math.min(1,padState.axLY))*22;
+    stickDot.style.left = "calc(50% + "+px.toFixed(1)+"px)";
+    stickDot.style.top  = "calc(50% + "+py.toFixed(1)+"px)";
+    stickVal.textContent = "L: "+padState.axLX.toFixed(2)+", "+padState.axLY.toFixed(2);
+
+    // パッド一覧
+    const pads = getPads();
+    let html = "";
+    if(useWs){
+      html = '<div class="pl sel">▶ WebSocket から受信中</div>'
+           + '<div class="pl">'+escapeHtml(WS_URL)+'</div>'
+           + '<div class="pl">Gamepad API('+pads.length+' 台)は待機</div>';
+    } else if(pads.length===0){
+      html = '<div class="pl">接続パッド: なし</div>';
+    } else {
+      html = '<div class="pl" style="color:var(--dim);margin-bottom:2px">接続 '+pads.length+' 台 (使いたいパッドのボタンを押すと自動選択):</div>';
+      for(const gp of pads){
+        const sel = gp.index===selectedPadIndex;
+        const name = gp.id.length>26 ? gp.id.slice(0,26)+"…" : gp.id;
+        html += '<div class="pl'+(sel?' sel':'')+'">'+(sel?'▶ ':'　')+'<b>#'+gp.index+'</b> '+escapeHtml(name)+'</div>';
+      }
+    }
+    padlistEl.innerHTML = html;
+  }
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  // Back でパッド切替（エッジで1回）
+  function cyclePad(){
+    if(padState.source === "ws") return;   // WebSocket 使用中はパッド選択を動かさない
+    const pads = getPads();
+    if(pads.length===0){ selectedPadIndex=null; return; }
+    if(selectedPadIndex===null){ selectedPadIndex=pads[0].index; return; }
+    const order = pads.map(p=>p.index);
+    const cur = order.indexOf(selectedPadIndex);
+    const next = order[(cur+1)%order.length];
+    selectedPadIndex = next;
+  }
+
+  //====================================================================
+  // ゲーム状態
+  //====================================================================
+  const STATE = { WAIT_PAD:0, TITLE:1, PLAY:2, CLEAR:3, OVER:4 };
+  let state = STATE.WAIT_PAD;
+
+  const player = { x:W/2, y:H-42, w:38, h:18, speed:5.2, cooldown:0 };
+  let bullets = [];      // 自弾 {x,y}
+  let eBullets = [];     // 敵弾 {x,y}
+  let invaders = [];     // {x,y,alive,type}
+  let score = 0;
+  let waveDir = 1;       // 編隊の移動方向
+  let waveSpeed = 0.7;
+  let stepTimer = 0;
+  let enemyFireTimer = 0;
+  let particles = [];
+
+  const COLS = 9, ROWS = 4;
+  const INV_W = 32, INV_H = 22;
+  const INV_GAPX = 20, INV_GAPY = 18;
+  const FIELD_TOP = 70;
+  const SHOOT_COOLDOWN = 12; // フレーム。押しっぱなしでこの間隔連射
+
+  function aliveCount(){ let n=0; for(const v of invaders) if(v.alive) n++; return n; }
+
+  function initWave(){
+    invaders = [];
+    const totalW = COLS*INV_W + (COLS-1)*INV_GAPX;
+    const startX = (W-totalW)/2;
+    for(let r=0;r<ROWS;r++){
+      for(let c=0;c<COLS;c++){
+        invaders.push({
+          x: startX + c*(INV_W+INV_GAPX),
+          y: FIELD_TOP + r*(INV_H+INV_GAPY),
+          alive:true,
+          type: r===0?2:(r<2?1:0), // 上段ほど高得点
+          row:r, col:c
+        });
+      }
+    }
+    waveDir = 1;
+    waveSpeed = 0.7;
+    stepTimer = 0;
+  }
+
+  function resetGame(){
+    player.x = W/2;
+    player.cooldown = 0;
+    bullets = [];
+    eBullets = [];
+    particles = [];
+    score = 0;
+    enemyFireTimer = 40;
+    initWave();
+    state = STATE.PLAY;
+  }
+
+  function spawnExplosion(x,y,color){
+    for(let i=0;i<10;i++){
+      const a = Math.random()*Math.PI*2;
+      const sp = 1+Math.random()*2.4;
+      particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:20+Math.random()*12,color});
+    }
+  }
+
+  //====================================================================
+  // 更新
+  //====================================================================
+  function update(u){
+    // 状態遷移（入力）
+    let leftWaitPad = false;
+    if(state===STATE.WAIT_PAD){
+      // パッド検出、または何かキー/ボタンで TITLE へ
+      if(padState.connected){ state = STATE.TITLE; leftWaitPad = true; }
+      else if(u.start || u.left || u.right || u.shoot){ state = STATE.TITLE; leftWaitPad = true; }
+    }
+
+    // Back でパッド切替（どの状態でも）
+    if(u.edge.back) cyclePad();
+
+    // タイトルへ移った最初のフレームは、いま押しているボタンでそのまま開始しないようにする。
+    // これをしないと、待機画面で押した A や Enter がタイトルにも届いて画面を素通りしてしまう。
+    if(leftWaitPad) return;
+
+    if(state===STATE.TITLE){
+      if(u.edge.start || u.edge.shoot){ resetGame(); }
+      return;
+    }
+    if(state===STATE.CLEAR || state===STATE.OVER){
+      if(u.edge.start){ resetGame(); }
+      // 演出だけ進める
+      updateParticles();
+      return;
+    }
+    if(state!==STATE.PLAY) return;
+
+    //--- プレイ中 ---
+    // 移動（連続量 u.moveX を優先、無ければ left/right）
+    let mv = u.moveX;
+    if(mv===0){ if(u.left) mv=-1; if(u.right) mv=1; }
+    player.x += mv * player.speed;
+    const half = player.w/2;
+    if(player.x < half) player.x = half;
+    if(player.x > W-half) player.x = W-half;
+
+    // ショット: 押しっぱなし + クールダウンで連射
+    if(player.cooldown>0) player.cooldown--;
+    if(u.shoot && player.cooldown<=0){
+      bullets.push({x:player.x, y:player.y-14});
+      player.cooldown = SHOOT_COOLDOWN;
+    }
+
+    // 自弾更新
+    for(const b of bullets){ b.y -= 9; }
+    bullets = bullets.filter(b=>b.y > -20);
+
+    // 編隊の移動: 端に当たったら方向反転して降下
+    let hitEdge=false;
+    const step = waveSpeed * (1 + (1 - aliveCount()/(COLS*ROWS))*2.2); // 残り少ないほど速く
+    for(const v of invaders){ if(v.alive) v.x += waveDir*step; }
+    // 端判定（動かしたあとの位置で見る）
+    let minX=Infinity, maxX=-Infinity;
+    for(const v of invaders){ if(!v.alive) continue; if(v.x<minX)minX=v.x; if(v.x+INV_W>maxX)maxX=v.x+INV_W; }
+    if(minX<=8 && waveDir<0){ hitEdge=true; }
+    if(maxX>=W-8 && waveDir>0){ hitEdge=true; }
+    if(hitEdge){
+      waveDir *= -1;
+      for(const v of invaders){ if(v.alive) v.y += 14; }
+    }
+
+    // 敵の発砲: 生きている各列の最下段からランダムに
+    enemyFireTimer--;
+    if(enemyFireTimer<=0){
+      fireEnemy();
+      // 残り数が少ないほど頻繁に
+      const a = aliveCount();
+      enemyFireTimer = 30 + Math.floor(Math.random()* (40 + a*4));
+    }
+    // 敵弾更新
+    for(const eb of eBullets){ eb.y += 4.2; }
+    eBullets = eBullets.filter(eb=>eb.y < H+20);
+
+    // 当たり判定: 自弾 vs インベーダー
+    for(const b of bullets){
+      for(const v of invaders){
+        if(!v.alive) continue;
+        if(b.x > v.x && b.x < v.x+INV_W && b.y > v.y && b.y < v.y+INV_H){
+          v.alive = false;
+          b.dead = true;
+          score += (v.type+1)*10;
+          spawnExplosion(v.x+INV_W/2, v.y+INV_H/2, invColor(v.type));
+          break;
+        }
+      }
+    }
+    bullets = bullets.filter(b=>!b.dead);
+
+    // 当たり判定: 敵弾 vs 自機
+    for(const eb of eBullets){
+      if(eb.x > player.x-half && eb.x < player.x+half &&
+         eb.y > player.y-player.h/2 && eb.y < player.y+player.h/2){
+        gameOver();
+        return;
+      }
+    }
+
+    // 敵が最下段に到達 → ゲームオーバー
+    for(const v of invaders){
+      if(v.alive && v.y+INV_H >= player.y-4){ gameOver(); return; }
+    }
+
+    // 全滅 → クリア
+    if(aliveCount()===0){
+      state = STATE.CLEAR;
+      spawnExplosion(player.x, player.y, "#f4a340");
+    }
+
+    updateParticles();
+  }
+
+  function fireEnemy(){
+    // 各列で一番下の生存インベーダーを候補にする
+    const bottom = {};
+    for(const v of invaders){
+      if(!v.alive) continue;
+      if(!bottom[v.col] || v.y > bottom[v.col].y) bottom[v.col] = v;
+    }
+    const shooters = Object.values(bottom);
+    if(shooters.length===0) return;
+    const s = shooters[Math.floor(Math.random()*shooters.length)];
+    eBullets.push({x:s.x+INV_W/2, y:s.y+INV_H});
+  }
+
+  function gameOver(){
+    state = STATE.OVER;
+    spawnExplosion(player.x, player.y, "#ff5a6a");
+    spawnExplosion(player.x, player.y, "#f4a340");
+  }
+
+  function updateParticles(){
+    for(const p of particles){
+      p.x += p.vx; p.y += p.vy; p.vy += 0.04; p.life--;
+    }
+    particles = particles.filter(p=>p.life>0);
+  }
+
+  //====================================================================
+  // 描画
+  //====================================================================
+  function invColor(type){
+    return type===2 ? "#f4a340" : (type===1 ? "#5be09a" : "#7aa2ff");
+  }
+
+  // 星の背景（固定）
+  const stars = [];
+  for(let i=0;i<60;i++){
+    stars.push({x:Math.random()*W, y:Math.random()*H, r:Math.random()*1.4+0.3, a:Math.random()*0.5+0.2});
+  }
+
+  function drawInvader(v){
+    const x=v.x, y=v.y, col=invColor(v.type);
+    ctx.fillStyle = col;
+    // シンプルなドット風エイリアン
+    const u = INV_W/8, h = INV_H/6;
+    // 本体（角丸っぽく矩形＋触角）
+    ctx.fillRect(x+u*1, y+h*1, u*6, h*3);
+    ctx.fillRect(x+u*0, y+h*2, u*8, h*2);
+    // 目
+    ctx.fillStyle = "#0b0d13";
+    ctx.fillRect(x+u*2, y+h*2, u*1.2, h*1.2);
+    ctx.fillRect(x+u*5, y+h*2, u*1.2, h*1.2);
+    // 脚
+    ctx.fillStyle = col;
+    ctx.fillRect(x+u*1, y+h*4, u*1.4, h*1.6);
+    ctx.fillRect(x+u*5.6, y+h*4, u*1.4, h*1.6);
+  }
+
+  function drawPlayer(){
+    const x=player.x, y=player.y;
+    ctx.fillStyle = "#e8ecf5";
+    // 砲台
+    ctx.fillRect(x-2, y-14, 4, 10);
+    // 本体（台形風）
+    ctx.beginPath();
+    ctx.moveTo(x-player.w/2, y+player.h/2);
+    ctx.lineTo(x-player.w/2, y+2);
+    ctx.lineTo(x-10, y-6);
+    ctx.lineTo(x+10, y-6);
+    ctx.lineTo(x+player.w/2, y+2);
+    ctx.lineTo(x+player.w/2, y+player.h/2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#f4a340";
+    ctx.fillRect(x-6, y-6, 12, 4);
+  }
+
+  function draw(){
+    // 背景
+    ctx.fillStyle = "#080a10";
+    ctx.fillRect(0,0,W,H);
+    // 星
+    for(const s of stars){
+      ctx.globalAlpha = s.a;
+      ctx.fillStyle = "#9fb0d0";
+      ctx.fillRect(s.x, s.y, s.r, s.r);
+    }
+    ctx.globalAlpha = 1;
+
+    // 上部スコアバー
+    ctx.fillStyle = "#e8ecf5";
+    ctx.font = "16px 'Segoe UI',Meiryo,sans-serif";
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.fillText("SCORE", 16, 12);
+    ctx.fillStyle = "#f4a340";
+    ctx.font = "bold 22px 'Segoe UI',Meiryo,sans-serif";
+    ctx.fillText(String(score).padStart(5,"0"), 16, 30);
+
+    ctx.fillStyle = "#8b94a7";
+    ctx.font = "13px 'Segoe UI',Meiryo,sans-serif";
+    ctx.textAlign = "center";
+    const rem = aliveCount();
+    ctx.fillText("残り "+rem+" 体", W/2, 16);
+
+    // 地面ライン
+    ctx.strokeStyle = "#2a3142";
+    ctx.beginPath();
+    ctx.moveTo(0, player.y+player.h/2+8);
+    ctx.lineTo(W, player.y+player.h/2+8);
+    ctx.stroke();
+
+    if(state===STATE.PLAY || state===STATE.CLEAR || state===STATE.OVER){
+      // インベーダー
+      for(const v of invaders){ if(v.alive) drawInvader(v); }
+      // 自弾
+      ctx.fillStyle = "#f4a340";
+      for(const b of bullets){ ctx.fillRect(b.x-1.5, b.y-8, 3, 12); }
+      // 敵弾
+      ctx.fillStyle = "#ff5a6a";
+      for(const eb of eBullets){ ctx.fillRect(eb.x-1.5, eb.y, 3, 10); }
+      // 自機（オーバー時は消す）
+      if(state!==STATE.OVER) drawPlayer();
+      // パーティクル
+      for(const p of particles){
+        ctx.globalAlpha = Math.max(0, p.life/30);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x-1.5, p.y-1.5, 3, 3);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  //====================================================================
+  // 中央メッセージ制御
+  //====================================================================
+  const msgEl = document.getElementById("msg");
+  const msgTitle = document.getElementById("msgTitle");
+  const msgText = document.getElementById("msgText");
+  const msgBox = document.getElementById("msgBox");
+  const msgSub = msgBox.querySelector(".sub");
+
+  function updateMessage(){
+    let show = true;
+    let title="", text="", sub="", blink=false;
+    switch(state){
+      case STATE.WAIT_PAD:
+        title = "コントローラを接続";
+        text = "コントローラのボタンを押してください";
+        sub = "press a controller button";
+        blink = true;
+        break;
+      case STATE.TITLE:
+        title = "インベーダー風シューティング";
+        text = padState.connected
+          ? "A ボタン / Start で開始"
+          : "Z / Enter で開始（キーボード）";
+        sub = "移動: スティック・十字・矢印　ショット: A / Z";
+        break;
+      case STATE.CLEAR:
+        title = "クリア！";
+        text = "SCORE  "+String(score).padStart(5,"0");
+        sub = "Start / Enter でもう一度";
+        break;
+      case STATE.OVER:
+        title = "ゲームオーバー";
+        text = "SCORE  "+String(score).padStart(5,"0");
+        sub = "Start / Enter でリスタート";
+        break;
+      default:
+        show = false;
+    }
+    if(show){
+      msgEl.style.display = "flex";
+      msgTitle.textContent = title;
+      msgText.textContent = text;
+      msgText.classList.toggle("blink", blink);
+      msgSub.textContent = sub;
+      msgTitle.style.color = (state===STATE.OVER) ? "#ff5a6a"
+                            : (state===STATE.CLEAR) ? "#5be09a" : "#f4a340";
+    } else {
+      msgEl.style.display = "none";
+    }
+  }
+
+  //====================================================================
+  // メインループ
+  //====================================================================
+  function loop(){
+    const u = readInput();
+    update(u);
+    draw();
+    updateHud();
+    updateMessage();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // 測定用の出口。スコアと状態を外から読めるようにする。研究で改変の効き方を
+  // 機械的に測るために置いてある。遊びそのものには影響しない。
+  window.__probe = {
+    game: "shooter",
+    get score(){ return score; },
+    get state(){ return ["WAIT_PAD","TITLE","PLAY","CLEAR","OVER"][state]; },
+    get playing(){ return state === STATE.PLAY; },
+    // 「見てから反応する」自動操作のために、自機と敵の位置も出す。
+    // 反応遅延の効き方を測るには、状態を読んでから動く操作が要る。決まった手順を
+    // 繰り返すだけの操作では、遅延があっても同じことが遅れて起きるだけで差が出ない。
+    // 切り分け用。どの経路でどんな入力が届いているかを覗く
+    get input(){ return {src: padState.source, connected: padState.connected,
+                         raw: padState.raw, ws: wsPad, wsAlive: wsConnected}; },
+    get view(){
+      let target = null, best = 1e9;
+      for (const v of invaders) {
+        if (!v.alive) continue;
+        const d = Math.abs((v.x + INV_W/2) - (player.x));
+        if (d < best) { best = d; target = { x: v.x + INV_W/2, y: v.y }; }
+      }
+      return { px: player.x, w: W, target: target, alive: aliveCount() };
+    },
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+{
+  "name": "KuriCon",
+  "port": 8788,
+  "preset": "fighting-mic",
+  "lockDesign": true,
+  "icon": "KuriCon.ico",
+  "hidePads": true,
+  "ui": "fighting",
+  "startHidden": true,
+  "rules": [
+    { "op": "disable", "button": "Y", "startSec": 0, "endSec": 30 },
+    { "op": "disable", "button": "B", "startSec": 0, "endSec": 30 }
+  ],
+  "mic": {
+    "enabled": true,
+    "button": "RT",
+    "threshold": 0.2,
+    "mode": "hold"
+  },
+  "pads": [
+    {
+      "label": "PunkWorkshop (Razer Panthera PS4)",
+      "vid": 5426,
+      "pid": 1025,
+      "axes": { "lx": 0, "ly": 1, "rx": 2, "ry": 5, "lt": 3, "rt": 4, "invertY": true }
+    },
+    {
+      "label": "GP2040-CE の Switch のモード（導電性コントローラなど）",
+      "vid": 3853,
+      "pid": 146,
+      "axes": { "lx": 0, "ly": 1, "rx": 2, "ry": 3, "lt": -1, "rt": -1, "invertY": true }
+    },
+    {
+      "label": "ROG Ally 内蔵コントローラ",
+      "vid": 2821,
+      "pid": 6988,
+      "axes": { "lx": 1, "ly": 0, "rx": 3, "ry": 2, "lt": 4, "rt": 5, "invertY": false },
+      "buttons": "0=A,1=B,2=X,3=Y,6=-,7=-,8=Back,9=Start,10=DUp,11=DRight,12=DDown,13=DLeft"
+    }
+  ]
+}

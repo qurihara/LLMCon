@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gamepad watch</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; }
+  h1 { font-size: 1.2rem; }
+  #hint { background: #ffe; border: 1px solid #dd8; padding: 1rem; border-radius: 6px; }
+  .pad { border: 1px solid #ccc; border-radius: 6px; padding: .6rem 1rem; margin: .6rem 0; }
+  .none { color: #888; }
+  code { background: #f2f2f2; padding: 0 .3em; }
+</style>
+
+<h1>Gamepad watch</h1>
+
+<div id="hint">
+  <b>このページをクリックしてから、コントローラのボタンを一度押してください。</b><br>
+  Chrome は、ページが前面にあってボタンが押されるまでパッドを見せません。
+</div>
+
+<p id="status">まだパッドは見えていません。</p>
+<div id="pads"></div>
+
+<script>
+// 見えているパッドの一覧を、変わるたびにサーバへ送る。
+// 人が押すのは最初の一回だけでよい。あとは自動で記録される。
+const statusEl = document.getElementById("status");
+const padsEl = document.getElementById("pads");
+let last = "";
+
+function snapshot() {
+  const out = [];
+  for (const p of navigator.getGamepads()) {
+    if (!p) continue;
+    out.push({
+      index: p.index, id: p.id, mapping: p.mapping,
+      axes: p.axes.length, buttons: p.buttons.length,
+      pressed: p.buttons.map((b, i) => b.pressed ? i : -1).filter(i => i >= 0),
+    });
+  }
+  return out;
+}
+
+function render(pads) {
+  statusEl.textContent = pads.length === 0
+    ? "まだパッドは見えていません。ページをクリックしてボタンを押してください。"
+    : `見えているパッド: ${pads.length} 台`;
+  padsEl.innerHTML = pads.length === 0
+    ? '<p class="none">(なし)</p>'
+    : pads.map(p => `<div class="pad"><b>[${p.index}]</b> <code>${p.id}</code><br>
+        mapping=${p.mapping} axes=${p.axes} buttons=${p.buttons}
+        ${p.pressed.length ? " 押下=" + p.pressed.join(",") : ""}</div>`).join("");
+}
+
+function report(pads) {
+  fetch("/report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ t: new Date().toISOString(), count: pads.length, pads }),
+  }).catch(() => {});
+}
+
+setInterval(() => {
+  const pads = snapshot();
+  render(pads);
+  const key = JSON.stringify(pads.map(p => [p.index, p.id]));
+  if (key !== last) { last = key; report(pads); }
+}, 200);
+
+// 変化が無いときも定期的に送る。そうしないと「変わっていないのか、
+// ページが止まっているのか」が遠隔から区別できない。
+setInterval(() => report(snapshot()), 3000);
+
+addEventListener("gamepadconnected", e => report(snapshot()));
+addEventListener("gamepaddisconnected", e => report(snapshot()));
+</script>

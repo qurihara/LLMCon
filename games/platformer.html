@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2Dプラットフォーマー</title>
+<style>
+  :root{
+    --bg:#0e1016; --panel:#171a22; --line:#262b36;
+    --txt:#e7ecf5; --dim:#8b93a6; --amber:#f4a340; --amber2:#ffcf87;
+    --good:#4fd08a; --bad:#ff6b6b; --sky:#1b2130;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI",system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Meiryo",sans-serif;}
+  .wrap{max-width:860px;margin:0 auto;padding:14px 12px 40px;}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+  h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.02em;}
+  h1 .accent{color:var(--amber)}
+  header a{color:var(--amber);text-decoration:none;font-size:14px;white-space:nowrap;}
+  header a:hover{text-decoration:underline;}
+  .stage{position:relative;width:820px;max-width:100%;margin:0 auto;}
+  canvas{display:block;width:820px;max-width:100%;height:auto;background:#0b0d13;
+    border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.45);}
+  .hint{margin:10px auto 0;max-width:820px;color:var(--dim);font-size:12.5px;line-height:1.7;}
+  .hint b{color:var(--amber2);font-weight:600;}
+  .hint code{background:#20242e;color:var(--amber2);padding:1px 6px;border-radius:5px;font-size:12px;}
+  .opts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:10px auto 0;max-width:820px;font-size:13px;color:var(--dim);}
+  .opts label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none;}
+  .opts input[type=range]{vertical-align:middle;}
+  .opts .val{color:var(--amber2);min-width:56px;display:inline-block;}
+  footer{margin:18px auto 0;max-width:820px;color:#5a6172;font-size:11.5px;line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>2D<span class="accent">プラットフォーマー</span> <span style="color:var(--dim);font-size:13px;font-weight:400">— 横スクロール・ジャンプアクション</span></h1>
+    <a href="index.html">← ランチャー</a>
+  </header>
+
+  <div class="stage">
+    <canvas id="cv" width="820" height="500"></canvas>
+  </div>
+
+  <div class="opts">
+    <label title="左右・スティックの入力を反転します"><input type="checkbox" id="invert"> 入力を反転</label>
+    <label title="入力に遅延を掛けます">遅延 <input type="range" id="lag" min="0" max="20" step="1" value="0"> <span class="val" id="lagv">0 f</span></label>
+    <span style="margin-left:auto">操作対象パッド: <b style="color:var(--amber2)">入力したパッドに自動追従</b>（手動切替=Back）</span>
+  </div>
+
+  <div class="hint">
+    <b>操作:</b> 左スティック / 十字 / 矢印・WASD で移動、<code>A</code>(Z) ジャンプ（押しっぱなしで高く、離すと弱まる）、
+    <code>B</code>(X) 押しっぱなしでダッシュ、<code>Start</code>(Enter) で最初から。
+    右端の<b style="color:var(--amber)">ゴール旗</b>を目指す。コインで加点、下へ落ちるとミス。<br>
+    <b>反転</b>や<b>遅延</b>を掛けると、ジャンプの間合いがどれだけ狂うかを体感できる。
+  </div>
+
+  <footer>
+    入力は W3C Gamepad API を毎フレームポーリング。標準マッピング（A=0,B=1,X=2,Y=3,LB=4,RB=5,LT=6,RT=7,Back=8,Start=9,十字=12-15,軸=左スティック）。
+    パッド未検出時は「コントローラのボタンを押してください」を表示。右上 HUD に生入力を表示（反転・遅延・連打・アナログ変換が目で見える）。<br>
+    LLMCon から WebSocket（<code>ws://ホスト/vcon/ws</code>、既定は 127.0.0.1:8777、<code>?ws=ホスト:ポート</code> で変更可）で
+    コントローラの状態が届いているあいだは、そちらを優先して使う。届かなくなると自動で Gamepad API に戻る。
+  </footer>
+</div>
+
+<script>
+"use strict";
+(function(){
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+
+  // ---------- 入力オプション ----------
+  const invertEl = document.getElementById('invert');
+  const lagEl = document.getElementById('lag');
+  const lagvEl = document.getElementById('lagv');
+  lagEl.addEventListener('input', ()=>{ lagvEl.textContent = lagEl.value + ' f'; });
+
+  // ================= Gamepad 管理 =================
+  const pads = {};            // index -> gamepad id (接続中)
+  let activeIndex = null;     // 操作対象のパッド index
+  let lastInputIndex = null;  // 最後に入力のあったパッド
+  let anyPadSeen = false;
+
+  window.addEventListener('gamepadconnected', (e)=>{
+    pads[e.gamepad.index] = e.gamepad.id;
+    anyPadSeen = true;
+    if(activeIndex === null) activeIndex = e.gamepad.index;
+  });
+  window.addEventListener('gamepaddisconnected', (e)=>{
+    delete pads[e.gamepad.index];
+    if(activeIndex === e.gamepad.index){
+      const keys = Object.keys(pads);
+      activeIndex = keys.length ? parseInt(keys[0],10) : null;
+    }
+  });
+
+  // ================= WebSocket 経路（LLMCon 直結）=================
+  // LLMCon がウェブ版コントローラと同じ口へ {"t":"pad",...} を流してくる。
+  // これを受け取れているあいだは Gamepad API より優先して使う。
+  const WS_FRESH_MS = 2000;           // 直近この時間内に pad が来ていれば WS を使う
+  const WS_RETRY_MS = 3000;
+  const wsPad = { buttons:Object.create(null), lx:0, ly:0, rx:0, ry:0, lt:0, rt:0 };
+  let wsLastMsg = 0;                  // 最後に pad を受け取った時刻
+  let wsConnected = false;            // ソケットが開いているか
+  let wsSock = null;
+  let wsRetryTimer = null;
+  let usingWs = false;                // 直近フレームで WS 経路を使ったか（HUD 用）
+
+  function wsHost(){
+    let host = '';
+    try{
+      const m = /[?&]ws=([^&#]+)/.exec(location.search || '');
+      if(m) host = decodeURIComponent(m[1]);
+    }catch(e){ host = ''; }
+    if(!host){ try{ host = location.host || ''; }catch(e){ host = ''; } }
+    if(!host) host = '127.0.0.1:8777';
+    return host;
+  }
+  const WS_HOST = wsHost();
+
+  function wsNum(v, d){
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    return isFinite(n) ? n : (d||0);
+  }
+  function wsScheduleRetry(){
+    if(wsRetryTimer !== null) return;
+    wsRetryTimer = setTimeout(()=>{ wsRetryTimer = null; wsConnect(); }, WS_RETRY_MS);
+  }
+  function wsConnect(){
+    if(typeof WebSocket === 'undefined') return;
+    let s = null;
+    try{ s = new WebSocket('ws://' + WS_HOST + '/vcon/ws'); }
+    catch(e){ wsScheduleRetry(); return; }
+    wsSock = s;
+    s.onopen = ()=>{ if(wsSock===s) wsConnected = true; };
+    s.onerror = ()=>{ try{ s.close(); }catch(e){} };
+    s.onclose = ()=>{
+      // 既に別のソケットへ切り替わっているときは、そちらに任せて何もしない
+      // （古いソケットの後始末で再接続を重ねると、ソケットが増え続ける）。
+      if(wsSock !== s) return;
+      wsSock = null; wsConnected = false;
+      wsScheduleRetry();
+    };
+    s.onmessage = (ev)=>{
+      const d = ev.data;
+      // 同じ口には "reload" や {"t":"miclvl",...} も流れてくる。pad 以外は無視する。
+      if(typeof d !== 'string') return;
+      if(d.charAt(0) !== '{') return;
+      let m = null;
+      try{ m = JSON.parse(d); }catch(e){ return; }
+      if(!m || m.t !== 'pad') return;
+      const nb = Object.create(null);
+      if(Array.isArray(m.buttons)){
+        for(const b of m.buttons){ if(typeof b === 'string') nb[b] = true; }
+      }
+      wsPad.buttons = nb;
+      wsPad.lx = wsNum(m.lx); wsPad.ly = wsNum(m.ly);
+      wsPad.rx = wsNum(m.rx); wsPad.ry = wsNum(m.ry);
+      wsPad.lt = wsNum(m.lt); wsPad.rt = wsNum(m.rt);
+      wsLastMsg = Date.now();
+    };
+  }
+  function wsActive(){ return wsLastMsg !== 0 && (Date.now() - wsLastMsg) < WS_FRESH_MS; }
+  try{ wsConnect(); }catch(e){ /* WebSocket が使えない環境でも遊べるようにする */ }
+
+  // 生のパッド一覧を取得（ブラウザ差異吸収）
+  function getPads(){
+    const gp = navigator.getGamepads ? navigator.getGamepads() : [];
+    const out = [];
+    for(let i=0;i<gp.length;i++){ if(gp[i]) out.push(gp[i]); }
+    return out;
+  }
+
+  // 論理ボタン定義（標準マッピング）
+  const BTN = { A:0,B:1,X:2,Y:3,LB:4,RB:5,LT:6,RT:7,BACK:8,START:9,
+                DU:12,DD:13,DL:14,DR:15 };
+
+  // 現在フレームの生入力（HUD 用にそのまま持つ）
+  const raw = {
+    connectedId: null,
+    buttons: {},   // 名前 -> pressed(bool)
+    triggers: {LT:0,RT:0},
+    axX:0, axY:0
+  };
+
+  // 論理入力（ゲーム用。遅延・反転を適用後）
+  const input = {
+    moveX:0,         // -1..1
+    jumpHeld:false, jumpPressed:false,
+    dashHeld:false,
+    startPressed:false
+  };
+
+  // エッジ検出のための前フレーム状態
+  let prevJump=false, prevStart=false, prevBack=false;
+  // キーボード
+  const keys = {};
+  window.addEventListener('keydown', (e)=>{
+    keys[e.code]=true;
+    // ゲーム系キーは既定動作抑制（スクロール等）
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
+    if(e.code==='Enter'){ /* Start */ }
+  });
+  window.addEventListener('keyup', (e)=>{ keys[e.code]=false; });
+
+  // ---------- 遅延バッファ ----------
+  // 各フレームの「論理生入力サンプル」を貯めて、lag フレーム前のものを使う
+  const sampleQueue = [];
+
+  // 1フレーム分の論理入力サンプルを組み立てる（遅延前）
+  function sampleInput(){
+    // --- キーボード ---
+    let kx = 0;
+    if(keys['ArrowLeft']||keys['KeyA']) kx -= 1;
+    if(keys['ArrowRight']||keys['KeyD']) kx += 1;
+    let kJump = !!(keys['KeyZ']||keys['Space']||keys['ArrowUp']||keys['KeyW']);
+    let kDash = !!(keys['KeyX']);
+    let kStart = !!keys['Enter'];
+    let kBack = !!keys['ShiftLeft'] || !!keys['ShiftRight']; // 補助（キーボードでのパッド切替）
+
+    // --- ゲームパッド（activeIndex）---
+    let gx = 0, gJump=false, gDash=false, gStart=false, gBack=false;
+    let ax=0, ay=0;
+    let lt=0, rt=0;
+    let btnState = {};
+    const gpList = getPads();
+    // WebSocket から新しい状態が届いているあいだは、そちらを使う（自動追従は働かせない）
+    const wsOn = wsActive();
+    usingWs = wsOn;
+
+    // --- 自動追従：今まさに「はっきり入力」しているパッドへ activeIndex を切り替える ---
+    // 「はっきり入力」= いずれかのボタンが pressed、または左スティックを |axis|>0.6 まで倒している。
+    // ボタンはドリフトしないため優先する。わずかなスティックのドリフトでは切り替えない。
+    let btnPad = null, btnHasActive = false;      // ボタンを押しているパッド（最小 index）
+    let stickPad = null, stickHasActive = false;  // スティックを大きく倒しているパッド（最小 index）
+    for(const g of gpList){
+      // 接続中リスト更新（getGamepads 経由でも拾う）
+      pads[g.index] = g.id;
+      let btnDown = false;
+      for(const b of g.buttons){ if(b.pressed){ btnDown = true; break; } }
+      if(btnDown){
+        if(g.index === activeIndex) btnHasActive = true;
+        if(btnPad === null) btnPad = g.index;
+      } else if(Math.abs(g.axes[0]||0) > 0.6 || Math.abs(g.axes[1]||0) > 0.6){
+        if(g.index === activeIndex) stickHasActive = true;
+        if(stickPad === null) stickPad = g.index;
+      }
+    }
+    if(gpList.length || wsOn){ anyPadSeen = true; }
+    // ボタン入力を最優先。現在の操作対象が入力を続けているなら維持し、
+    // 別のパッドがはっきり入力したらそちらへ追従する（=常に最後にはっきり入力したパッドが操作対象）。
+    let cand = null;
+    if(btnPad !== null){ cand = btnHasActive ? activeIndex : btnPad; }
+    else if(stickPad !== null){ cand = stickHasActive ? activeIndex : stickPad; }
+    // WebSocket を使っているあいだは、どちらの経路かが揺れないよう自動追従を止める
+    if(!wsOn && cand !== null){ activeIndex = cand; lastInputIndex = cand; }
+    // まだどのパッドも入力していない初期状態では、最初の接続パッドを暫定の操作対象にする。
+    if(activeIndex === null && gpList.length){ activeIndex = gpList[0].index; }
+    // 接続が消えたものを掃除
+    {
+      const live = new Set(gpList.map(g=>g.index));
+      for(const k of Object.keys(pads)){ if(!live.has(parseInt(k,10))) delete pads[k]; }
+      if(activeIndex!==null && !live.has(activeIndex)){
+        activeIndex = gpList.length ? gpList[0].index : null;
+      }
+    }
+
+    let activePad = null;
+    if(!wsOn && activeIndex!==null){
+      for(const g of gpList){ if(g.index===activeIndex){ activePad=g; break; } }
+    }
+
+    if(wsOn){
+      // --- WebSocket 由来の状態（LLMCon の改変を通した最終出力）---
+      const wb = wsPad.buttons;
+      const gb = (n)=> !!wb[n];
+      const cl = (v)=> Math.max(-1, Math.min(1, v));
+      ax = cl(wsPad.lx);
+      ay = -cl(wsPad.ly);            // 送信側は上が正。画面座標に合わせて符号を反転する。
+      lt = Math.max(0, Math.min(1, wsPad.lt));
+      rt = Math.max(0, Math.min(1, wsPad.rt));
+
+      if(ax < -0.4) gx -= 1;
+      if(ax >  0.4) gx += 1;
+      if(gb('DLeft'))  gx -= 1;
+      if(gb('DRight')) gx += 1;
+      gx = Math.max(-1, Math.min(1, gx));
+
+      gJump  = gb('A');
+      gDash  = gb('B');
+      gStart = gb('Start');
+      gBack  = gb('Back');
+
+      btnState = {
+        A:gb('A'),B:gb('B'),X:gb('X'),Y:gb('Y'),LB:gb('LB'),RB:gb('RB'),
+        LT:lt>0.5,RT:rt>0.5,BACK:gb('Back'),START:gb('Start'),
+        DU:gb('DUp'),DD:gb('DDown'),DL:gb('DLeft'),DR:gb('DRight')
+      };
+      raw.connectedId = 'LLMCon (WebSocket)';
+    } else if(activePad){
+      const b = activePad.buttons;
+      const gb = (i)=> b[i] ? b[i].pressed : false;
+      const gv = (i)=> b[i] ? b[i].value : 0;
+      ax = activePad.axes[0]||0;
+      ay = activePad.axes[1]||0;
+      lt = gv(BTN.LT); rt = gv(BTN.RT);
+
+      // 方向：スティック + 十字
+      if(ax < -0.4) gx -= 1;
+      if(ax >  0.4) gx += 1;
+      if(gb(BTN.DL)) gx -= 1;
+      if(gb(BTN.DR)) gx += 1;
+      gx = Math.max(-1, Math.min(1, gx));
+
+      gJump  = gb(BTN.A);
+      gDash  = gb(BTN.B);
+      gStart = gb(BTN.START);
+      gBack  = gb(BTN.BACK);
+
+      // HUD 生状態
+      btnState = {
+        A:gb(0),B:gb(1),X:gb(2),Y:gb(3),LB:gb(4),RB:gb(5),
+        LT:gv(6)>0.5,RT:gv(7)>0.5,BACK:gb(8),START:gb(9),
+        DU:gb(12),DD:gb(13),DL:gb(14),DR:gb(15)
+      };
+      raw.connectedId = activePad.id;
+    } else {
+      raw.connectedId = null;
+    }
+
+    // 生状態を HUD 用に保存（使用中の経路のもの、無ければキーボードを反映）
+    const usingPad = wsOn || !!activePad;
+    raw.buttons = usingPad ? btnState : {
+      A:kJump,B:kDash,X:false,Y:false,LB:false,RB:false,LT:false,RT:false,
+      BACK:kBack,START:kStart,DU:(keys['ArrowUp']||keys['KeyW']),DD:(keys['ArrowDown']||keys['KeyS']),
+      DL:(keys['ArrowLeft']||keys['KeyA']),DR:(keys['ArrowRight']||keys['KeyD'])
+    };
+    raw.triggers = {LT:lt, RT:rt};
+    raw.axX = usingPad ? ax : (kx);
+    raw.axY = usingPad ? ay : 0;
+
+    // --- 合成（キーボード or パッド、押されている方を採用）---
+    let mx = 0;
+    // アナログ量も反映：スティックは連続値、十字/キーは±1
+    let analog = 0;
+    if(Math.abs(ax) > 0.4) analog = ax;
+    mx = analog !== 0 ? analog : (gx !== 0 ? gx : kx);
+
+    const jump  = gJump || kJump;
+    const dash  = gDash || kDash;
+    const start = gStart || kStart;
+    const back  = gBack || kBack;
+
+    return { mx, jump, dash, start, back };
+  }
+
+  // 遅延を適用して最終 input を得る
+  function resolveInput(){
+    const s = sampleInput();
+
+    // 反転
+    let sm = s.mx;
+    if(invertEl.checked){ sm = -sm; }
+
+    const sample = { mx:sm, jump:s.jump, dash:s.dash, start:s.start, back:s.back };
+
+    // 遅延キュー
+    const lag = parseInt(lagEl.value,10)||0;
+    sampleQueue.push(sample);
+    while(sampleQueue.length > lag+1) sampleQueue.shift();
+    const used = sampleQueue.length > lag ? sampleQueue[sampleQueue.length-1-lag] : sampleQueue[0];
+
+    input.moveX = used.mx;
+    input.jumpHeld = used.jump;
+    input.jumpPressed = used.jump && !prevJump;
+    input.dashHeld = used.dash;
+    input.startPressed = used.start && !prevStart;
+    const backPressed = used.back && !prevBack;
+
+    prevJump = used.jump;
+    prevStart = used.start;
+    prevBack = used.back;
+
+    // Back でパッド切替（エッジ）。WebSocket 経路のときは切替対象が無いので何もしない。
+    if(backPressed && !usingWs){ cyclePad(); }
+  }
+
+  function cyclePad(){
+    const keysArr = Object.keys(pads).map(k=>parseInt(k,10)).sort((a,b)=>a-b);
+    if(keysArr.length===0){ activeIndex=null; return; }
+    if(activeIndex===null){ activeIndex=keysArr[0]; return; }
+    const i = keysArr.indexOf(activeIndex);
+    activeIndex = keysArr[(i+1)%keysArr.length];
+  }
+
+  // ================= ゲーム本体 =================
+  const GRAV = 0.68;
+  const MOVE = 0.9, MAXSPD = 4.2, DASHMUL = 1.9, FRICTION = 0.80, AIRCTL=0.55;
+  const JUMP_V = 12.5, JUMP_CUT = 0.42; // ボタンを離すと上昇を弱める
+  const TILE = 40;
+
+  // レベル定義（地面・浮遊足場・コイン・ゴール）を座標で
+  // ワールド座標。地面 y は下端付近。
+  const GROUND_Y = 440;   // 地面上面
+  const WORLD_W = 3400;
+
+  let platforms = [];  // {x,y,w,h}
+  let coins = [];      // {x,y,r,got}
+  let goal = null;     // {x,y,w,h}
+
+  function buildLevel(){
+    platforms = [];
+    coins = [];
+    // 地面（ところどころ穴）
+    // 連続した地面ブロックを、穴を空けつつ配置
+    const groundSegs = [
+      [0, 560],
+      [640, 420],     // 穴 (560..640)
+      [1140, 380],
+      [1620, 520],    // 穴
+      [2260, 900],
+      [3230, 170]     // ゴール足場付近
+    ];
+    for(const [gx,gw] of groundSegs){
+      platforms.push({x:gx, y:GROUND_Y, w:gw, h:H-GROUND_Y+40, ground:true});
+    }
+    // 浮遊足場
+    const floats = [
+      [300,340,120],
+      [500,270,110],
+      [820,320,120],
+      [1000,240,110],
+      [1250,330,130],
+      [1450,250,120],
+      [1720,360,120],
+      [1900,280,120],
+      [2080,220,120],
+      [2380,330,140],
+      [2650,270,120],
+      [2900,220,130],
+    ];
+    for(const [x,y,w] of floats){ platforms.push({x,y,w,h:18,ground:false}); }
+
+    // コイン（浮遊足場の上あたり・空中）
+    const coinPos = [
+      [360,300],[540,230],[700,380],[880,280],[1050,200],
+      [1300,290],[1500,210],[1780,320],[1960,240],[2120,180],
+      [2430,290],[2700,230],[2950,180],[3120,360],[3200,300]
+    ];
+    for(const [x,y] of coinPos){ coins.push({x,y,r:10,got:false,phase:Math.random()*6.28}); }
+
+    // ゴール旗（右端の足場の上）
+    goal = {x:3300, y:GROUND_Y-120, w:14, h:120};
+  }
+
+  const player = {
+    x:60, y:0, w:26, h:34, vx:0, vy:0, onGround:false,
+    facing:1, coyote:0, jumpBuffered:0, alive:true
+  };
+
+  let camX = 0;
+  let score = 0, lives = 3;
+  let state = 'title'; // title | play | dead | clear
+  let clearTimer = 0;
+  let deathTimer = 0;
+
+  function resetPlayer(){
+    player.x = 60; player.y = GROUND_Y - player.h;
+    player.vx = 0; player.vy = 0; player.onGround=false;
+    player.facing = 1; player.alive = true; player.coyote=0; player.jumpBuffered=0;
+    camX = 0;
+    sampleQueue.length = 0;
+  }
+
+  function restartGame(){
+    buildLevel();
+    score = 0; lives = 3;
+    resetPlayer();
+    state = 'play';
+  }
+
+  buildLevel();
+  resetPlayer();
+
+  // ---------- 物理・衝突 ----------
+  function aabb(a,b){
+    return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+  }
+
+  function updatePlayer(){
+    if(state!=='play') return;
+
+    // 水平
+    const ctrl = player.onGround ? 1 : AIRCTL;
+    const mx = input.moveX;
+    if(Math.abs(mx) > 0.05){
+      player.vx += MOVE * mx * ctrl;
+      player.facing = mx>0 ? 1 : -1;
+    } else if(player.onGround){
+      player.vx *= FRICTION;
+      if(Math.abs(player.vx)<0.05) player.vx=0;
+    }
+    let maxs = MAXSPD * (input.dashHeld ? DASHMUL : 1);
+    // スティックの倒し量に応じて上限をスケール（アナログ変換が効いて見える）
+    maxs *= Math.min(1, 0.35 + Math.abs(mx));
+    if(player.vx > maxs) player.vx = maxs;
+    if(player.vx < -maxs) player.vx = -maxs;
+
+    // ジャンプ（バッファ + コヨーテタイム）
+    if(input.jumpPressed) player.jumpBuffered = 6;
+    if(player.jumpBuffered>0) player.jumpBuffered--;
+    if(player.coyote>0) player.coyote--;
+
+    if(player.jumpBuffered>0 && (player.onGround || player.coyote>0)){
+      player.vy = -JUMP_V;
+      player.onGround=false;
+      player.coyote=0;
+      player.jumpBuffered=0;
+    }
+    // 可変ジャンプ：上昇中にボタンを離したら上昇を弱める
+    if(!input.jumpHeld && player.vy < 0){
+      player.vy *= JUMP_CUT_APPLY();
+    }
+
+    // 重力
+    player.vy += GRAV;
+    if(player.vy > 18) player.vy = 18;
+
+    // --- X 方向移動 & 衝突 ---
+    player.x += player.vx;
+    for(const p of platforms){
+      if(aabb(player,p)){
+        if(player.vx > 0){ player.x = p.x - player.w; }
+        else if(player.vx < 0){ player.x = p.x + p.w; }
+        player.vx = 0;
+      }
+    }
+    if(player.x < 0) player.x = 0;
+
+    // --- Y 方向移動 & 衝突 ---
+    player.y += player.vy;
+    player.onGround=false;
+    for(const p of platforms){
+      if(aabb(player,p)){
+        if(player.vy > 0){ // 落下中 → 上面に着地
+          player.y = p.y - player.h;
+          player.vy = 0;
+          player.onGround = true;
+          player.coyote = 6;
+        } else if(player.vy < 0){ // 上昇中 → 頭ぶつけ
+          player.y = p.y + p.h;
+          player.vy = 0;
+        }
+      }
+    }
+
+    // コイン取得
+    for(const c of coins){
+      if(c.got) continue;
+      const dx = (player.x+player.w/2) - c.x;
+      const dy = (player.y+player.h/2) - c.y;
+      if(dx*dx+dy*dy < (c.r+16)*(c.r+16)){ c.got=true; score += 100; }
+    }
+
+    // ゴール
+    if(goal){
+      const gbox = {x:goal.x-10,y:goal.y,w:goal.w+30,h:goal.h};
+      if(aabb(player,gbox)){ state='clear'; clearTimer=0; score += 500; }
+    }
+
+    // 落下ミス
+    if(player.y > H + 80){
+      loseLife();
+    }
+  }
+
+  // 上昇カット係数（毎フレーム掛けると強すぎるので固定値だが軽く）
+  function JUMP_CUT_APPLY(){ return JUMP_CUT; }
+
+  function loseLife(){
+    lives--;
+    if(lives <= 0){
+      state='dead'; deathTimer=0;
+    } else {
+      // その場のチェックポイント無し：先頭からやり直しだが進行は保つ
+      resetPlayer();
+    }
+  }
+
+  // ---------- カメラ ----------
+  function updateCamera(){
+    const target = player.x + player.w/2 - W*0.38;
+    camX += (target - camX) * 0.12;
+    if(camX < 0) camX = 0;
+    if(camX > WORLD_W - W) camX = WORLD_W - W;
+  }
+
+  // ================= 描画 =================
+  let tick = 0;
+
+  function draw(){
+    tick++;
+    ctx.clearRect(0,0,W,H);
+
+    // 背景グラデーション
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#0e1016'); g.addColorStop(1,'#141b2b');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+    // 遠景の丘（パララックス）
+    drawParallax();
+
+    ctx.save();
+    ctx.translate(-Math.round(camX),0);
+
+    drawPlatforms();
+    drawCoins();
+    drawGoal();
+    drawPlayer();
+
+    ctx.restore();
+
+    // 前景 UI
+    drawHUDGame();
+    drawInputHUD();
+
+    // 状態オーバーレイ
+    if(state==='title') drawTitle();
+    else if(state==='dead') drawGameOver();
+    else if(state==='clear') drawClear();
+
+    // パッド未検出案内
+    if(!anyPadSeen && state!=='play') drawPadPrompt();
+    else if(!anyPadSeen) drawPadPromptSmall();
+  }
+
+  function drawParallax(){
+    // 星
+    ctx.fillStyle='rgba(120,140,180,.25)';
+    for(let i=0;i<40;i++){
+      const sx = ((i*197) - camX*0.2) % (W+40);
+      const x = sx<0? sx+W+40 : sx;
+      const y = (i*53)%220 + 20;
+      ctx.fillRect(x,y,2,2);
+    }
+    // 丘
+    ctx.fillStyle='#161d2b';
+    const off = -camX*0.35;
+    ctx.beginPath();
+    ctx.moveTo(0,H);
+    for(let x=-100;x<=W+100;x+=40){
+      const wx = x - (off%400);
+      const y = 360 + Math.sin((x+off)*0.008)*40;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W,H); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#1b2438';
+    const off2 = -camX*0.55;
+    ctx.beginPath(); ctx.moveTo(0,H);
+    for(let x=-100;x<=W+100;x+=40){
+      const y = 410 + Math.sin((x+off2)*0.01+2)*30;
+      ctx.lineTo(x,y);
+    }
+    ctx.lineTo(W,H); ctx.closePath(); ctx.fill();
+  }
+
+  function drawPlatforms(){
+    for(const p of platforms){
+      if(p.x+p.w < camX-20 || p.x > camX+W+20) continue;
+      if(p.ground){
+        ctx.fillStyle='#2a3346';
+        ctx.fillRect(p.x,p.y,p.w,p.h);
+        ctx.fillStyle='#3a4763';
+        ctx.fillRect(p.x,p.y,p.w,6);
+        ctx.fillStyle='#4fd08a';
+        ctx.globalAlpha=0.5;
+        ctx.fillRect(p.x,p.y,p.w,2);
+        ctx.globalAlpha=1;
+      } else {
+        ctx.fillStyle='#39435c';
+        roundRect(p.x,p.y,p.w,p.h,5); ctx.fill();
+        ctx.fillStyle='#f4a340';
+        ctx.globalAlpha=0.9;
+        ctx.fillRect(p.x,p.y,p.w,3);
+        ctx.globalAlpha=1;
+      }
+    }
+  }
+
+  function drawCoins(){
+    for(const c of coins){
+      if(c.got) continue;
+      if(c.x < camX-20 || c.x > camX+W+20) continue;
+      const bob = Math.sin(tick*0.08 + c.phase)*3;
+      ctx.save();
+      ctx.translate(c.x, c.y+bob);
+      const sc = Math.abs(Math.cos(tick*0.06+c.phase));
+      ctx.scale(0.4+0.6*sc, 1);
+      ctx.beginPath();
+      ctx.arc(0,0,c.r,0,Math.PI*2);
+      ctx.fillStyle='#f4a340'; ctx.fill();
+      ctx.lineWidth=2; ctx.strokeStyle='#ffcf87'; ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawGoal(){
+    if(!goal) return;
+    // ポール
+    ctx.fillStyle='#c9d2e3';
+    ctx.fillRect(goal.x, goal.y, 4, goal.h);
+    ctx.beginPath();
+    ctx.arc(goal.x+2, goal.y, 5,0,Math.PI*2);
+    ctx.fillStyle='#f4a340'; ctx.fill();
+    // 旗（はためく）
+    const f = Math.sin(tick*0.12)*4;
+    ctx.fillStyle='#f4a340';
+    ctx.beginPath();
+    ctx.moveTo(goal.x+4, goal.y+6);
+    ctx.lineTo(goal.x+4+34, goal.y+14+f);
+    ctx.lineTo(goal.x+4, goal.y+26);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#0e1016'; ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('G', goal.x+16, goal.y+20);
+    ctx.textAlign='left';
+  }
+
+  function drawPlayer(){
+    const p = player;
+    // 影
+    ctx.fillStyle='rgba(0,0,0,.3)';
+    ctx.beginPath(); ctx.ellipse(p.x+p.w/2, p.y+p.h+4, p.w*0.5, 5,0,0,Math.PI*2); ctx.fill();
+    // 体
+    const dashing = input.dashHeld && Math.abs(p.vx)>0.5;
+    ctx.fillStyle = dashing ? '#ffcf87' : '#f4a340';
+    roundRect(p.x,p.y,p.w,p.h,6); ctx.fill();
+    // 顔（進行方向側に寄せた目を2つ）
+    ctx.fillStyle='#0e1016';
+    const eb = p.facing>0 ? p.w-13 : 5;   // 前側の目の x
+    ctx.fillRect(p.x+eb, p.y+9, 4, 6);
+    ctx.fillRect(p.x+eb - p.facing*7, p.y+9, 4, 6);
+    if(dashing){
+      ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=2;
+      for(let i=1;i<=3;i++){
+        ctx.beginPath();
+        ctx.moveTo(p.x - p.facing*i*7, p.y+ i*8);
+        ctx.lineTo(p.x - p.facing*(i*7+10), p.y+ i*8);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function roundRect(x,y,w,h,r){
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  // ---------- ゲーム HUD（左上） ----------
+  function drawHUDGame(){
+    ctx.save();
+    ctx.font='bold 15px "Segoe UI",sans-serif';
+    ctx.textAlign='left';
+    ctx.fillStyle='#e7ecf5';
+    ctx.fillText('スコア: '+score, 14, 26);
+    // 残機
+    ctx.fillStyle='#8b93a6';
+    ctx.fillText('残機', 14, 48);
+    for(let i=0;i<Math.max(0,lives);i++){
+      ctx.fillStyle='#f4a340';
+      roundRect(58+i*20, 38, 13, 13, 3); ctx.fill();
+    }
+    // 進捗バー
+    const prog = Math.min(1, player.x / (goal? goal.x : WORLD_W));
+    ctx.fillStyle='#20242e'; roundRect(14,58,150,7,3); ctx.fill();
+    ctx.fillStyle='#4fd08a'; roundRect(14,58,150*prog,7,3); ctx.fill();
+    ctx.restore();
+  }
+
+  // ---------- 入力 HUD（右上・必須） ----------
+  function drawInputHUD(){
+    const pad=10;
+    const boxW=250, boxH=132;
+    const x0 = W - boxW - 12, y0 = 12;
+    ctx.save();
+    // 背景
+    ctx.fillStyle='rgba(20,24,32,.9)';
+    ctx.strokeStyle='#262b36'; ctx.lineWidth=1;
+    roundRect(x0,y0,boxW,boxH,8); ctx.fill(); ctx.stroke();
+
+    // ID 行
+    ctx.font='11px "Segoe UI",sans-serif';
+    ctx.textAlign='left';
+    ctx.fillStyle='#8b93a6';
+    ctx.fillText('使用中パッド:', x0+10, y0+16);
+    // 入力経路バッジ（右寄せ）
+    const routeTxt = usingWs ? (wsConnected ? 'WS 接続中' : 'WS 切断')
+                             : (wsConnected ? 'Gamepad API (WS待機)' : 'Gamepad API');
+    ctx.textAlign='right';
+    ctx.fillStyle = usingWs ? (wsConnected ? '#4fd08a' : '#ff6b6b') : '#8b93a6';
+    ctx.fillText(routeTxt, x0+boxW-10, y0+16);
+    ctx.textAlign='left';
+
+    ctx.fillStyle=raw.connectedId? '#ffcf87':'#ff6b6b';
+    const idStr = usingWs ? 'LLMCon (WebSocket 直結)'
+                : (raw.connectedId ? ('#'+activeIndex+' '+trunc(raw.connectedId, 26))
+                                   : (anyPadSeen? 'なし(キーボード)':'なし'));
+    ctx.fillText(idStr, x0+10, y0+30);
+
+    // 接続一覧（複数対応・操作対象を [ ] で強調）
+    ctx.fillStyle='#5a6172'; ctx.font='10px "Segoe UI",sans-serif';
+    if(usingWs){
+      ctx.fillText('ws://'+trunc(WS_HOST,24)+'/vcon/ws  自動追従は停止中', x0+10, y0+44);
+    } else {
+      const idxs = Object.keys(pads).map(k=>parseInt(k,10)).sort((a,b)=>a-b);
+      let listStr = idxs.length ? idxs.map(i=> (i===activeIndex?'['+i+']':' '+i+' ')).join(' ') : '(接続なし)';
+      ctx.fillText('接続: '+listStr+'  自動追従(Backでも切替)', x0+10, y0+44);
+    }
+
+    // ボタンランプ
+    const lamps = [['A','A'],['B','B'],['X','X'],['Y','Y'],['LB','LB'],['RB','RB'],['LT','LT'],['RT','RT']];
+    let bx = x0+10, by = y0+54, cw=28, ch=18;
+    ctx.font='bold 10px "Segoe UI",sans-serif'; ctx.textAlign='center';
+    for(let i=0;i<lamps.length;i++){
+      const [key,label]=lamps[i];
+      const on = !!raw.buttons[key];
+      const gx2 = bx + (i%8)*( (boxW-20)/8 );
+      lampRect(gx2, by, cw*0.8, ch, label, on);
+    }
+    // 十字
+    const dpad = [['DU','↑'],['DD','↓'],['DL','←'],['DR','→']];
+    let dy = by+24;
+    for(let i=0;i<dpad.length;i++){
+      const [key,label]=dpad[i];
+      const on=!!raw.buttons[key];
+      lampRect(x0+10 + i*30, dy, 24, ch, label, on);
+    }
+    // Start/Back
+    lampRect(x0+10+4*30+6, dy, 34, ch, 'Bk', !!raw.buttons.BACK);
+    lampRect(x0+10+4*30+6+40, dy, 40, ch, 'St', !!raw.buttons.START);
+
+    // スティック位置
+    const sr=20, scx=x0+boxW-34, scy=y0+boxH-30;
+    ctx.strokeStyle='#3a4763'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(scx,scy,sr,0,Math.PI*2); ctx.stroke();
+    ctx.strokeStyle='#262b36';
+    ctx.beginPath(); ctx.moveTo(scx-sr,scy); ctx.lineTo(scx+sr,scy); ctx.moveTo(scx,scy-sr); ctx.lineTo(scx,scy+sr); ctx.stroke();
+    const dotx = scx + Math.max(-1,Math.min(1,raw.axX))*sr;
+    const doty = scy + Math.max(-1,Math.min(1,raw.axY))*sr;
+    ctx.fillStyle='#f4a340';
+    ctx.beginPath(); ctx.arc(dotx,doty,4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#5a6172'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('L stick', scx, scy+sr+11);
+
+    // トリガーバー
+    ctx.textAlign='left';
+    ctx.fillStyle='#5a6172'; ctx.font='9px sans-serif';
+    ctx.fillText('LT', x0+10, y0+boxH-24);
+    triBar(x0+28, y0+boxH-30, 60, 6, raw.triggers.LT);
+    ctx.fillText('RT', x0+10, y0+boxH-10);
+    triBar(x0+28, y0+boxH-16, 60, 6, raw.triggers.RT);
+
+    ctx.restore();
+  }
+
+  function lampRect(x,y,w,h,label,on){
+    ctx.save();
+    ctx.fillStyle = on ? '#f4a340' : '#20242e';
+    ctx.strokeStyle = on ? '#ffcf87' : '#333a48';
+    ctx.lineWidth=1;
+    roundRect(x,y,w,h,3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = on ? '#0e1016' : '#8b93a6';
+    ctx.font='bold 9px "Segoe UI",sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(label, x+w/2, y+h/2+0.5);
+    ctx.textBaseline='alphabetic';
+    ctx.restore();
+  }
+  function triBar(x,y,w,h,v){
+    ctx.fillStyle='#20242e'; ctx.fillRect(x,y,w,h);
+    ctx.fillStyle='#4fd08a'; ctx.fillRect(x,y,w*Math.max(0,Math.min(1,v)),h);
+  }
+
+  function trunc(s,n){ return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+  // ---------- オーバーレイ ----------
+  function overlayBg(a){ ctx.fillStyle='rgba(8,10,16,'+a+')'; ctx.fillRect(0,0,W,H); }
+
+  function drawTitle(){
+    overlayBg(0.72);
+    ctx.textAlign='center';
+    ctx.fillStyle='#f4a340'; ctx.font='bold 40px "Segoe UI",sans-serif';
+    ctx.fillText('2D プラットフォーマー', W/2, H/2-40);
+    ctx.fillStyle='#e7ecf5'; ctx.font='16px "Segoe UI",sans-serif';
+    ctx.fillText('Start(Enter) / A(Z) で スタート', W/2, H/2+6);
+    ctx.fillStyle='#8b93a6'; ctx.font='13px "Segoe UI",sans-serif';
+    ctx.fillText('移動: 左スティック/十字/矢印  ・  A=ジャンプ  ・  B=ダッシュ', W/2, H/2+34);
+    ctx.textAlign='left';
+  }
+  function drawGameOver(){
+    deathTimer++;
+    overlayBg(0.72);
+    ctx.textAlign='center';
+    ctx.fillStyle='#ff6b6b'; ctx.font='bold 40px "Segoe UI",sans-serif';
+    ctx.fillText('ゲームオーバー', W/2, H/2-30);
+    ctx.fillStyle='#e7ecf5'; ctx.font='16px "Segoe UI",sans-serif';
+    ctx.fillText('スコア '+score, W/2, H/2+6);
+    ctx.fillStyle='#8b93a6'; ctx.font='14px "Segoe UI",sans-serif';
+    ctx.fillText('Start(Enter) / A(Z) で やり直し', W/2, H/2+36);
+    ctx.textAlign='left';
+  }
+  function drawClear(){
+    clearTimer++;
+    overlayBg(0.6);
+    ctx.textAlign='center';
+    ctx.fillStyle='#4fd08a'; ctx.font='bold 44px "Segoe UI",sans-serif';
+    ctx.fillText('クリア！', W/2, H/2-30);
+    ctx.fillStyle='#f4a340'; ctx.font='bold 20px "Segoe UI",sans-serif';
+    ctx.fillText('スコア '+score, W/2, H/2+6);
+    ctx.fillStyle='#8b93a6'; ctx.font='14px "Segoe UI",sans-serif';
+    ctx.fillText('Start(Enter) / A(Z) で もう一度', W/2, H/2+36);
+    ctx.textAlign='left';
+    // 紙吹雪
+    for(let i=0;i<30;i++){
+      const t=(tick*2 + i*40)% (H+60);
+      ctx.fillStyle= i%2? '#f4a340':'#4fd08a';
+      const x=(i*137)%W;
+      ctx.fillRect(x, t-30, 4,7);
+    }
+  }
+  function drawPadPrompt(){
+    // タイトル等に重ねる小さめの案内はしない（タイトルが出ているので下部に）
+    ctx.textAlign='center';
+    ctx.fillStyle='rgba(244,163,64,.95)';
+    ctx.font='13px "Segoe UI",sans-serif';
+    ctx.fillText('コントローラのボタンを押してください / press a controller button', W/2, H-24);
+    ctx.textAlign='left';
+  }
+  function drawPadPromptSmall(){
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.fillStyle='rgba(244,163,64,.9)';
+    ctx.font='12px "Segoe UI",sans-serif';
+    ctx.fillText('コントローラのボタンを押してください / press a controller button', W/2, H-14);
+    ctx.restore();
+    ctx.textAlign='left';
+  }
+
+  // ================= メインループ =================
+  function step(){
+    resolveInput();
+
+    // 状態遷移（Start / A で開始・やり直し）
+    if(state==='title'){
+      if(input.startPressed || input.jumpPressed){ restartGame(); }
+    } else if(state==='dead'){
+      if(input.startPressed || (input.jumpPressed && deathTimer>10)){ restartGame(); }
+    } else if(state==='clear'){
+      if(input.startPressed || (input.jumpPressed && clearTimer>10)){ restartGame(); }
+    } else if(state==='play'){
+      if(input.startPressed){ restartGame(); }
+      updatePlayer();
+      updateCamera();
+    }
+
+    draw();
+    requestAnimationFrame(step);
+  }
+
+  requestAnimationFrame(step);
+
+  // 測定用の出口。shooter.html と同じ考え方である。
+  // 外から自動で遊ばせて成績を測るには、ゲームの状態を読む手立てが要る。
+  // 画面の絵だけを見て判断すると当てにならないので、素の値をそのまま出す。
+  window.__probe = {
+    game: "platformer",
+    get state(){ return state; },              // title | play | dead | clear
+    get playing(){ return state === 'play'; },
+    get score(){ return score; },
+    get lives(){ return lives; },
+    get view(){ return { x: player.x, y: player.y, vx: player.vx, vy: player.vy,
+                         onGround: player.onGround, alive: player.alive, camX: camX }; },
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Build outputs
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+publish/
+publish-kuricon/
+
+# Compiled installers (distribute via a GitHub Release, not committed)
+installer/*-Setup*.exe
+installer/Output/
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# Claude Code per-project settings (kept locally)
+.claude/
+
+# OS
+Thumbs.db
+.DS_Store

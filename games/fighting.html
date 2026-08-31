@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>格闘ゲーム - CntlLevelConnection</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0e1016;
+    color: #e6e8ee;
+    font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  }
+  #wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 14px 12px 30px;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  header h1 {
+    font-size: 20px;
+    margin: 0;
+    letter-spacing: 0.5px;
+  }
+  header h1 .amber { color: #f4a340; }
+  header a {
+    color: #f4a340;
+    text-decoration: none;
+    font-size: 14px;
+  }
+  header a:hover { text-decoration: underline; }
+  #stage {
+    position: relative;
+    width: 820px;
+    max-width: 100%;
+    margin: 0 auto;
+  }
+  canvas {
+    display: block;
+    width: 820px;
+    max-width: 100%;
+    height: auto;
+    background: #0e1016;
+    border: 1px solid #23262f;
+    border-radius: 8px;
+  }
+  #help {
+    margin: 12px auto 0;
+    max-width: 820px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: #aab0be;
+    background: #14171f;
+    border: 1px solid #23262f;
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+  #help b { color: #e6e8ee; }
+  #help .k {
+    display: inline-block;
+    background: #1c2029;
+    border: 1px solid #2c313d;
+    border-radius: 4px;
+    padding: 0 6px;
+    color: #f4a340;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>格闘ゲーム <span class="amber">FIGHTER</span></h1>
+    <a href="index.html">← ランチャー</a>
+  </header>
+  <div id="stage">
+    <canvas id="cv" width="820" height="500"></canvas>
+  </div>
+  <div id="help">
+    <b>操作</b>　移動: 左スティック / 十字 / 矢印・A/D　｜　しゃがみ: 下　｜　ジャンプ: 上 または <span class="k">LB</span> / W<br>
+    攻撃: <span class="k">A</span>弱パンチ(Z)　<span class="k">B</span>強パンチ(X)　<span class="k">X</span>弱キック(C)　<span class="k">Y</span>強キック(V)　｜　再戦: <span class="k">Start</span> / Enter　｜　操作対象は入力したパッドに自動で追従（手動切替: <span class="k">Back</span>）<br>
+    強攻撃は大ダメージだが隙が大きい。攻撃にはクールダウンがあり、押しっぱなしでは連射できない（連打=turbo の効果が見える）。<br>
+    LLMCon から WebSocket で状態が届いているあいだは、そちらを優先して使う（右上の HUD に経路が出る）。接続先を変えるには <span class="k">?ws=ホスト:ポート</span> を URL に付ける。
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var cv = document.getElementById("cv");
+var ctx = cv.getContext("2d");
+var W = cv.width, H = cv.height;
+
+// ---------- 色 ----------
+var COL = {
+  bg: "#0e1016",
+  amber: "#f4a340",
+  text: "#e6e8ee",
+  dim: "#aab0be",
+  panel: "#14171f",
+  line: "#23262f",
+  p1: "#4db3ff",
+  p2: "#ff6b6b",
+  hurt: "#ffd24d",
+  guard: "#7de08a"
+};
+
+// ---------- ゲームパッド管理 ----------
+var pads = {};            // index -> gamepad(生)
+var padOrder = [];        // 接続順のindex一覧
+var activePad = null;     // 現在操作対象のindex(数値) or null
+var lastInputPad = null;  // 最後に入力のあったindex
+var seenAnyPad = false;
+
+window.addEventListener("gamepadconnected", function(e){
+  addPad(e.gamepad);
+});
+window.addEventListener("gamepaddisconnected", function(e){
+  removePad(e.gamepad.index);
+});
+function addPad(gp){
+  if (padOrder.indexOf(gp.index) === -1) padOrder.push(gp.index);
+  seenAnyPad = true;
+  if (activePad === null) activePad = gp.index;
+}
+function removePad(idx){
+  var i = padOrder.indexOf(idx);
+  if (i !== -1) padOrder.splice(i, 1);
+  delete pads[idx];
+  if (activePad === idx) {
+    activePad = padOrder.length ? padOrder[0] : null;
+  }
+}
+function refreshPads(){
+  var gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  pads = {};
+  padOrder = [];
+  for (var i = 0; i < gps.length; i++){
+    var gp = gps[i];
+    if (gp) {
+      pads[gp.index] = gp;
+      padOrder.push(gp.index);
+      seenAnyPad = true;
+    }
+  }
+  if (activePad !== null && padOrder.indexOf(activePad) === -1) {
+    activePad = padOrder.length ? padOrder[0] : null;
+  }
+  if (activePad === null && padOrder.length) activePad = padOrder[0];
+}
+
+// 「今まさに使われているパッド」に自動追従する。
+// 毎フレーム全パッドを走査し、はっきりした入力（buttons[0..15]のどれかが
+// pressed、または左スティックが|axes|>0.6）を出しているパッドを操作対象にする。
+// ボタンはドリフトしないため優先する。現在の操作対象が入力中ならそのまま維持し、
+// 無用な切り替え（ちらつき）を防ぐ。
+function autoSelectActivePad(){
+  var btnPad = -1;   // ボタン入力のあった最初のパッド
+  var stickPad = -1; // スティック入力のあった最初のパッド
+  var activeStick = false; // 現在の操作対象が強いスティック入力を出しているか
+  for (var k = 0; k < padOrder.length; k++){
+    var idx = padOrder[k];
+    var gp = pads[idx];
+    if (!gp) continue;
+    // --- ボタン（0..15）---
+    var b = gp.buttons || [];
+    var hasBtn = false;
+    var lim = Math.min(b.length, 16);
+    for (var i = 0; i < lim; i++){
+      if (b[i] && b[i].pressed) { hasBtn = true; break; }
+    }
+    if (hasBtn) {
+      // 現在の操作対象がボタンを押しているなら維持（切り替えない）
+      if (idx === activePad) { lastInputPad = idx; return; }
+      if (btnPad === -1) btnPad = idx;
+      continue;
+    }
+    // --- 左スティック（大きく倒したときのみ）---
+    var ax = gp.axes || [];
+    var axX = ax.length > 0 ? ax[0] : 0;
+    var axY = ax.length > 1 ? ax[1] : 0;
+    if (Math.abs(axX) > 0.6 || Math.abs(axY) > 0.6) {
+      if (idx === activePad) activeStick = true;
+      if (stickPad === -1) stickPad = idx;
+    }
+  }
+  // ボタンを最優先（どのパッドのボタン押下も、他パッドの傾けたスティックに勝つ）。
+  // ボタンが無いときは、現在の操作対象がスティックを倒し続けていればそれを維持し、
+  // 複数のスティック同時入力によるちらつきを防ぐ。
+  if (btnPad !== -1) { activePad = btnPad; lastInputPad = btnPad; }
+  else if (activeStick) { lastInputPad = activePad; }
+  else if (stickPad !== -1) { activePad = stickPad; lastInputPad = stickPad; }
+}
+
+// ---------- WebSocket 経由の入力（LLMCon から直接受け取る） ----------
+// LLMCon は改変（無効化・差し替え・連打・反転・反応遅延・アナログ変換）を通したあとの
+// 最終的な出力の状態を {"t":"pad",...} という形で送ってくる。ブラウザの Gamepad API を
+// 通さないので、パッドの取り違えが起きず、タブからフォーカスが外れても届き続ける。
+var WS_STALE_MS = 2000;   // これより新しい "pad" があれば WebSocket を優先する
+var wsSock = null;
+var wsOpen = false;
+var wsHost = "";
+var wsLastPadTime = -1e9;
+var wsPad = {
+  btn: {},                // 名前 -> pressed(bool)
+  lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 0
+};
+
+function wsTarget(){
+  var host = "";
+  try {
+    var m = /[?&]ws=([^&#]+)/.exec(location.search || "");
+    if (m) host = decodeURIComponent(m[1]);
+  } catch (e) { host = ""; }
+  if (!host) {
+    try { host = location.host || ""; } catch (e) { host = ""; }
+  }
+  if (!host) host = "127.0.0.1:8777";
+  return host;
+}
+
+// 直近に "pad" を受け取っていれば WebSocket の状態を使う
+function wsFresh(){
+  return (now() - wsLastPadTime) < WS_STALE_MS;
+}
+function now(){
+  return (window.performance && performance.now) ? performance.now() : Date.now();
+}
+
+function wsApplyPad(m){
+  var b = {};
+  var arr = m.buttons;
+  if (arr && arr.length) {
+    for (var i = 0; i < arr.length; i++) b[arr[i]] = true;
+  }
+  wsPad.btn = b;
+  wsPad.lx = numOr(m.lx, 0);
+  wsPad.ly = numOr(m.ly, 0);
+  wsPad.rx = numOr(m.rx, 0);
+  wsPad.ry = numOr(m.ry, 0);
+  wsPad.lt = numOr(m.lt, 0);
+  wsPad.rt = numOr(m.rt, 0);
+  wsLastPadTime = now();
+}
+function numOr(v, d){
+  return (typeof v === "number" && isFinite(v)) ? v : d;
+}
+
+function wsConnect(){
+  if (typeof WebSocket === "undefined") return;
+  wsHost = wsTarget();
+  var sock;
+  try {
+    sock = new WebSocket("ws://" + wsHost + "/vcon/ws");
+  } catch (e) {
+    wsSock = null; wsOpen = false;
+    setTimeout(wsConnect, 3000);
+    return;
+  }
+  wsSock = sock;
+  sock.onopen = function(){ wsOpen = true; };
+  sock.onmessage = function(ev){
+    // 同じ口にはウェブ版コントローラ向けの配信（"reload" や {t:"miclvl"}）も流れてくる。
+    // t が "pad" のものだけを扱い、他は黙って捨てる。
+    var d = ev.data;
+    if (typeof d !== "string") return;
+    if (d.charAt(0) !== "{") return;
+    var m;
+    try { m = JSON.parse(d); } catch (e) { return; }
+    if (!m || m.t !== "pad") return;
+    wsApplyPad(m);
+  };
+  sock.onerror = function(){ /* onclose で拾う */ };
+  sock.onclose = function(){
+    wsOpen = false;
+    if (wsSock === sock) wsSock = null;
+    setTimeout(wsConnect, 3000);
+  };
+}
+try { wsConnect(); } catch (e) { /* ゲームの動作は妨げない */ }
+
+// ボタン割り当て（標準マッピング）
+var BTN = {
+  A:0, B:1, X:2, Y:3, LB:4, RB:5, LT:6, RT:7, BACK:8, START:9,
+  DUP:12, DDOWN:13, DLEFT:14, DRIGHT:15
+};
+
+// 生の入力スナップショット
+function readPadRaw(){
+  var raw = {
+    connected: false,
+    id: "なし",
+    src: "gamepad",  // "ws" or "gamepad"
+    axX: 0, axY: 0,
+    btn: {},        // 名前 -> pressed(bool)
+    trig: {LT:0, RT:0}
+  };
+
+  // --- WebSocket 優先（直近2秒以内に "pad" を受け取っていれば） ---
+  if (wsFresh()) {
+    var wb = wsPad.btn;
+    raw.connected = true;
+    raw.src = "ws";
+    raw.id = "LLMCon (WebSocket)";
+    raw.axX = wsPad.lx;
+    raw.axY = -wsPad.ly;   // 送られてくる ly は上が正。このゲームは下が正。
+    raw.btn.A = !!wb.A;
+    raw.btn.B = !!wb.B;
+    raw.btn.X = !!wb.X;
+    raw.btn.Y = !!wb.Y;
+    raw.btn.LB = !!wb.LB;
+    raw.btn.RB = !!wb.RB;
+    raw.btn.LT = wsPad.lt > 0.5;
+    raw.btn.RT = wsPad.rt > 0.5;
+    raw.btn.BACK = !!wb.Back;
+    raw.btn.START = !!wb.Start;
+    raw.btn.DUP = !!wb.DUp;
+    raw.btn.DDOWN = !!wb.DDown;
+    raw.btn.DLEFT = !!wb.DLeft;
+    raw.btn.DRIGHT = !!wb.DRight;
+    raw.trig.LT = wsPad.lt;
+    raw.trig.RT = wsPad.rt;
+    return raw;
+  }
+
+  if (activePad === null) return raw;
+  var gp = pads[activePad];
+  if (!gp) return raw;
+  raw.connected = true;
+  raw.id = gp.id || ("Gamepad " + activePad);
+  var ax = gp.axes || [];
+  raw.axX = ax.length > 0 ? ax[0] : 0;
+  raw.axY = ax.length > 1 ? ax[1] : 0;
+  var b = gp.buttons || [];
+  function pr(i){ return (b[i] && b[i].pressed) ? true : false; }
+  function vl(i){ return (b[i] ? b[i].value : 0) || 0; }
+  raw.btn.A = pr(BTN.A);
+  raw.btn.B = pr(BTN.B);
+  raw.btn.X = pr(BTN.X);
+  raw.btn.Y = pr(BTN.Y);
+  raw.btn.LB = pr(BTN.LB);
+  raw.btn.RB = pr(BTN.RB);
+  raw.btn.LT = pr(BTN.LT) || vl(BTN.LT) > 0.5;
+  raw.btn.RT = pr(BTN.RT) || vl(BTN.RT) > 0.5;
+  raw.btn.BACK = pr(BTN.BACK);
+  raw.btn.START = pr(BTN.START);
+  raw.btn.DUP = pr(BTN.DUP);
+  raw.btn.DDOWN = pr(BTN.DDOWN);
+  raw.btn.DLEFT = pr(BTN.DLEFT);
+  raw.btn.DRIGHT = pr(BTN.DRIGHT);
+  raw.trig.LT = vl(BTN.LT);
+  raw.trig.RT = vl(BTN.RT);
+  return raw;
+}
+
+// ---------- キーボード ----------
+var keys = {};
+window.addEventListener("keydown", function(e){
+  keys[e.code] = true;
+  // ゲームで使うキーの既定動作を止める
+  if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space","Enter"].indexOf(e.code) !== -1) {
+    e.preventDefault();
+  }
+});
+window.addEventListener("keyup", function(e){
+  keys[e.code] = false;
+});
+
+// ---------- 統合入力（プレイヤー1用の論理入力） ----------
+// left/right/down/up/jump + attacks(a,b,x,y) + start + back(切替)
+function readIntent(raw){
+  var it = {
+    left:false, right:false, down:false, up:false,
+    a:false, b:false, x:false, y:false,
+    start:false, back:false
+  };
+  // ---- パッド ----
+  if (raw.connected) {
+    if (raw.axX < -0.4) it.left = true;
+    if (raw.axX > 0.4) it.right = true;
+    if (raw.axY < -0.4) it.up = true;
+    if (raw.axY > 0.4) it.down = true;
+    if (raw.btn.DLEFT) it.left = true;
+    if (raw.btn.DRIGHT) it.right = true;
+    if (raw.btn.DUP) it.up = true;
+    if (raw.btn.DDOWN) it.down = true;
+    if (raw.btn.A) it.a = true;
+    if (raw.btn.B) it.b = true;
+    if (raw.btn.X) it.x = true;
+    if (raw.btn.Y) it.y = true;
+    if (raw.btn.LB) it.up = true; // LB=ジャンプ
+    if (raw.btn.START) it.start = true;
+    if (raw.btn.BACK) it.back = true;
+  }
+  // ---- キーボード ----
+  if (keys["ArrowLeft"] || keys["KeyA"]) it.left = true;
+  if (keys["ArrowRight"] || keys["KeyD"]) it.right = true;
+  if (keys["ArrowDown"] || keys["KeyS"]) it.down = true;
+  if (keys["ArrowUp"] || keys["KeyW"]) it.up = true;
+  if (keys["KeyZ"]) it.a = true;
+  if (keys["KeyX"]) it.b = true;
+  if (keys["KeyC"]) it.x = true;
+  if (keys["KeyV"]) it.y = true;
+  if (keys["Enter"]) it.start = true;
+  if (keys["Backspace"]) it.back = true;
+  return it;
+}
+
+// エッジ検出用の前フレーム状態
+var prevIntent = { a:false,b:false,x:false,y:false,up:false,start:false,back:false };
+
+// ---------- ファイター ----------
+var GROUND_Y = 420;   // 足元のy
+var GRAVITY = 0.9;
+var JUMP_V = -15;
+var MOVE_SPD = 3.2;
+
+function makeFighter(x, facing, color, isCPU){
+  return {
+    x: x, y: GROUND_Y,
+    vx: 0, vy: 0,
+    w: 46, h: 96,
+    facing: facing,          // 1=右向き, -1=左向き
+    color: color,
+    hp: 100, maxhp: 100,
+    onGround: true,
+    crouch: false,
+    isCPU: isCPU,
+    // 攻撃状態
+    attack: null,            // {type, timer, hitDone, active, cd}
+    cooldown: 0,             // 全体クールダウン（連射防止）
+    hitStun: 0,              // 被弾硬直
+    guarding: false,
+    flash: 0,                // 被弾フラッシュ表示
+    // CPU用タイマー
+    aiTimer: 0,
+    aiState: "approach"
+  };
+}
+
+var p1, p2, roundOver, winner;
+
+function resetGame(){
+  p1 = makeFighter(230, 1, COL.p1, false);
+  p2 = makeFighter(590, -1, COL.p2, true);
+  roundOver = false;
+  winner = null;
+}
+resetGame();
+
+// 攻撃定義（弱/強 x パンチ/キック）
+// reach: 前方リーチ, hh: 判定の高さ, yoff: 判定の中心y(足元からの上方向), dmg, startup, active, recover
+var ATTACKS = {
+  lp: { name:"弱P", reach:52, hh:22, yoff:66, dmg:6,  startup:3, active:5,  recover:8,  knock:2 },
+  hp: { name:"強P", reach:60, hh:26, yoff:66, dmg:14, startup:8, active:6,  recover:20, knock:6 },
+  lk: { name:"弱K", reach:58, hh:22, yoff:30, dmg:7,  startup:4, active:6,  recover:10, knock:3 },
+  hk: { name:"強K", reach:70, hh:28, yoff:34, dmg:16, startup:10,active:7,  recover:24, knock:8 }
+};
+
+function startAttack(f, key){
+  if (f.attack) return false;
+  if (f.cooldown > 0) return false;
+  if (!f.onGround) return false; // 地上攻撃のみ（簡易）
+  if (f.hitStun > 0) return false;
+  var def = ATTACKS[key];
+  f.attack = {
+    key: key,
+    def: def,
+    phase: "startup",
+    timer: def.startup,
+    hitDone: false
+  };
+  return true;
+}
+
+// 攻撃の当たり判定矩形（activeフェーズのみ）
+function attackHitbox(f){
+  if (!f.attack || f.attack.phase !== "active") return null;
+  var def = f.attack.def;
+  var frontX = f.facing === 1 ? f.x + f.w/2 : f.x - f.w/2 - def.reach;
+  var cy = f.y - def.yoff;  // 足元(f.y)からの上方向
+  return { x: frontX, y: cy - def.hh/2, w: def.reach, h: def.hh };
+}
+
+function bodyRect(f){
+  var h = f.crouch ? f.h * 0.62 : f.h;
+  return { x: f.x - f.w/2, y: f.y - h, w: f.w, h: h };
+}
+
+function rectsOverlap(a, b){
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// ---------- プレイヤー更新 ----------
+function updateFighter(f, intent, opp){
+  // 向きは相手の方向へ
+  f.facing = (opp.x >= f.x) ? 1 : -1;
+
+  if (f.hitStun > 0) f.hitStun--;
+  if (f.flash > 0) f.flash--;
+  if (f.cooldown > 0) f.cooldown--;
+
+  var canAct = (f.hitStun <= 0);
+
+  // --- 攻撃フェーズ進行 ---
+  if (f.attack) {
+    f.attack.timer--;
+    if (f.attack.timer <= 0) {
+      if (f.attack.phase === "startup") {
+        f.attack.phase = "active";
+        f.attack.timer = f.attack.def.active;
+      } else if (f.attack.phase === "active") {
+        f.attack.phase = "recover";
+        f.attack.timer = f.attack.def.recover;
+      } else {
+        // 終了
+        f.cooldown = 8; // 連射防止クールダウン
+        f.attack = null;
+      }
+    }
+  }
+
+  var attacking = !!f.attack;
+
+  // --- 移動（攻撃中/硬直中は不可） ---
+  f.guarding = false;
+  f.crouch = false;
+  if (canAct && !attacking) {
+    // しゃがみ
+    if (intent.down && f.onGround) f.crouch = true;
+
+    // 後退でガード（相手側に背を向ける方向＝相手と逆方向入力）
+    var backDir = -f.facing;
+    var wantBack = (backDir === -1 && intent.left) || (backDir === 1 && intent.right);
+    if (wantBack && f.onGround) f.guarding = true;
+
+    // 移動
+    var mv = 0;
+    if (intent.left) mv -= 1;
+    if (intent.right) mv += 1;
+    if (!f.crouch) {
+      f.vx = mv * MOVE_SPD;
+    } else {
+      f.vx = 0;
+    }
+
+    // ジャンプ
+    if (intent.up && f.onGround) {
+      f.vy = JUMP_V;
+      f.onGround = false;
+    }
+  } else {
+    f.vx = 0;
+  }
+
+  // --- 重力・位置 ---
+  f.x += f.vx;
+  f.y += f.vy;
+  if (!f.onGround) {
+    f.vy += GRAVITY;
+    if (f.y >= GROUND_Y) {
+      f.y = GROUND_Y;
+      f.vy = 0;
+      f.onGround = true;
+    }
+  }
+  // 画面端
+  var half = f.w/2;
+  if (f.x < half + 10) f.x = half + 10;
+  if (f.x > W - half - 10) f.x = W - half - 10;
+}
+
+// ---------- 攻撃ヒット解決 ----------
+function resolveHits(att, def){
+  var hb = attackHitbox(att);
+  if (!hb) return;
+  if (att.attack.hitDone) return;
+  var body = bodyRect(def);
+  if (rectsOverlap(hb, body)) {
+    att.attack.hitDone = true;
+    var a = att.attack.def;
+    var dmg = a.dmg;
+    var knock = a.knock;
+    if (def.guarding && def.onGround) {
+      dmg = Math.max(1, Math.floor(dmg * 0.2)); // ガードで大幅軽減
+      knock = knock * 0.5;
+      def.flash = 6;
+    } else {
+      def.hitStun = 8 + Math.floor(a.dmg / 2);
+      def.flash = 10;
+    }
+    def.hp -= dmg;
+    if (def.hp < 0) def.hp = 0;
+    // ノックバック
+    def.x += att.facing * knock;
+  }
+}
+
+// ---------- CPU AI ----------
+function updateAI(cpu, human){
+  var it = { left:false, right:false, down:false, up:false, a:false,b:false,x:false,y:false, start:false, back:false };
+  if (roundOver) return it;
+  if (cpu.hitStun > 0) return it;
+
+  var dist = Math.abs(cpu.x - human.x);
+  cpu.aiTimer--;
+
+  var dir = (human.x < cpu.x) ? "left" : "right";
+
+  if (dist > 130) {
+    // 近づく
+    it[dir] = true;
+    cpu.aiState = "approach";
+  } else if (dist > 78) {
+    // 中距離：時々前進、時々攻撃の準備
+    if (cpu.aiTimer <= 0) {
+      var r = Math.random();
+      cpu.aiTimer = 18 + Math.floor(Math.random()*22);
+      if (r < 0.5) cpu.aiState = "approach";
+      else if (r < 0.8) cpu.aiState = "attack";
+      else cpu.aiState = "retreat";
+    }
+    if (cpu.aiState === "approach") it[dir] = true;
+    else if (cpu.aiState === "retreat") it[(dir==="left")?"right":"left"] = true;
+    else {
+      // 中距離攻撃＝キック寄り
+      if (!cpu.attack && cpu.cooldown <= 0) {
+        (Math.random() < 0.5) ? (it.x = true) : (it.y = true);
+      }
+    }
+  } else {
+    // 近距離：攻撃 or 後退（ガード）
+    if (cpu.aiTimer <= 0) {
+      var rr = Math.random();
+      cpu.aiTimer = 14 + Math.floor(Math.random()*20);
+      if (rr < 0.55) cpu.aiState = "attack";
+      else cpu.aiState = "retreat";
+    }
+    if (cpu.aiState === "attack") {
+      if (!cpu.attack && cpu.cooldown <= 0) {
+        var q = Math.random();
+        if (q < 0.35) it.a = true;
+        else if (q < 0.55) it.b = true;
+        else if (q < 0.8) it.x = true;
+        else it.y = true;
+      }
+    } else {
+      // 後退＝ガード
+      it[(dir==="left")?"right":"left"] = true;
+    }
+  }
+  return it;
+}
+
+// AI用のエッジ（毎フレーム新規オブジェクトなので押した瞬間として扱う）
+function applyAttackIntent(f, it, prev){
+  // 押した瞬間のみ攻撃発動
+  if (it.a && !prev.a) startAttack(f, "lp");
+  else if (it.b && !prev.b) startAttack(f, "hp");
+  else if (it.x && !prev.x) startAttack(f, "lk");
+  else if (it.y && !prev.y) startAttack(f, "hk");
+}
+
+var prevCPUIntent = { a:false,b:false,x:false,y:false };
+
+// ---------- メインループ ----------
+var backEdgePrev = false;
+var startEdge = false;
+
+function tick(){
+  refreshPads();
+  // WebSocket を使っているあいだは、Gamepad API 側の自動追従を働かせない
+  // （どちらの経路を使っているかが揺れないようにするため）。
+  if (!wsFresh()) autoSelectActivePad();   // 今まさに入力しているパッドへ自動追従
+  var raw = readPadRaw();
+  var it = readIntent(raw);
+
+  // 最後に入力のあったパッドを追跡
+  if (raw.connected && raw.src === "gamepad") {
+    var anyInput = it.left||it.right||it.up||it.down||it.a||it.b||it.x||it.y||it.start||it.back;
+    if (anyInput) lastInputPad = activePad;
+  }
+
+  // Back でパッド切替（エッジ）
+  var backNow = it.back;
+  if (backNow && !backEdgePrev && raw.src === "gamepad" && padOrder.length > 1) {
+    var ci = padOrder.indexOf(activePad);
+    activePad = padOrder[(ci + 1) % padOrder.length];
+  }
+  backEdgePrev = backNow;
+
+  // Start / Enter で再戦（エッジ）
+  var startNow = it.start;
+  if (startNow && !startEdge) {
+    resetGame();
+    prevIntent = { a:false,b:false,x:false,y:false,up:false,start:false,back:false };
+    prevCPUIntent = { a:false,b:false,x:false,y:false };
+  }
+  startEdge = startNow;
+
+  if (!roundOver) {
+    // プレイヤー1入力（エッジで攻撃発動）
+    applyAttackIntent(p1, it, prevIntent);
+
+    // CPU入力
+    var cit = updateAI(p2, p1);
+    applyAttackIntent(p2, cit, prevCPUIntent);
+    prevCPUIntent = { a:cit.a, b:cit.b, x:cit.x, y:cit.y };
+
+    updateFighter(p1, it, p2);
+    updateFighter(p2, cit, p1);
+
+    // ヒット解決
+    resolveHits(p1, p2);
+    resolveHits(p2, p1);
+
+    // KO判定
+    if (p1.hp <= 0 || p2.hp <= 0) {
+      roundOver = true;
+      if (p1.hp <= 0 && p2.hp <= 0) winner = "draw";
+      else if (p2.hp <= 0) winner = "p1";
+      else winner = "p2";
+    }
+  }
+
+  // prevIntent更新
+  prevIntent = {
+    a:it.a, b:it.b, x:it.x, y:it.y, up:it.up, start:it.start, back:it.back
+  };
+
+  draw(raw, it);
+  requestAnimationFrame(tick);
+}
+
+// ---------- 描画 ----------
+function draw(raw, it){
+  ctx.clearRect(0,0,W,H);
+  // 背景
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0,0,W,H);
+
+  // 床
+  ctx.fillStyle = "#171b24";
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+  ctx.strokeStyle = "#2a2f3b";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y);
+  ctx.lineTo(W, GROUND_Y);
+  ctx.stroke();
+  // 背景の縦線（奥行き演出）
+  ctx.strokeStyle = "rgba(60,66,82,0.25)";
+  ctx.lineWidth = 1;
+  for (var gx = 40; gx < W; gx += 80){
+    ctx.beginPath();
+    ctx.moveTo(gx, 120);
+    ctx.lineTo(gx, GROUND_Y);
+    ctx.stroke();
+  }
+
+  // 体力バー
+  drawHealth();
+
+  // ファイター
+  drawFighter(p1);
+  drawFighter(p2);
+
+  // KO表示
+  if (roundOver) {
+    ctx.fillStyle = "rgba(14,16,22,0.55)";
+    ctx.fillRect(0,0,W,H);
+    ctx.textAlign = "center";
+    ctx.fillStyle = COL.amber;
+    ctx.font = "bold 64px system-ui, sans-serif";
+    ctx.fillText("K.O.", W/2, 220);
+    ctx.fillStyle = COL.text;
+    ctx.font = "bold 26px system-ui, sans-serif";
+    var msg = winner === "p1" ? "あなたの勝ち！" : (winner === "p2" ? "CPUの勝ち…" : "引き分け");
+    ctx.fillText(msg, W/2, 268);
+    ctx.fillStyle = COL.dim;
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillText("Start / Enter で再戦", W/2, 306);
+    ctx.textAlign = "left";
+  }
+
+  // HUD（右上）
+  drawHUD(raw, it);
+
+  // パッド未検出メッセージ（WebSocket から届いているあいだは出さない）
+  // 画面の下寄りに置く。上に置くと右上の HUD と K.O. の文字に重なって、
+  // どちらも読めなくなるためである。
+  if (raw.src !== "ws" && (!seenAnyPad || (activePad === null))) {
+    var noteY = 320;
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(14,16,22,0.82)";
+    ctx.fillRect(W/2 - 250, noteY, 500, 90);
+    ctx.strokeStyle = COL.amber;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(W/2 - 250, noteY, 500, 90);
+    ctx.fillStyle = COL.amber;
+    ctx.font = "bold 18px system-ui, sans-serif";
+    ctx.fillText("コントローラのボタンを押してください", W/2, noteY + 40);
+    ctx.fillStyle = COL.dim;
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.fillText("press a controller button（キーボードでも操作可）", W/2, noteY + 66);
+    ctx.textAlign = "left";
+  }
+}
+
+function drawHealth(){
+  var pad = 20, barW = 300, barH = 20, top = 20;
+  // P1（左）
+  drawBar(pad, top, barW, barH, p1.hp / p1.maxhp, COL.p1, true);
+  // P2（右）
+  drawBar(W - pad - barW, top, barW, barH, p2.hp / p2.maxhp, COL.p2, false);
+  // 名前
+  ctx.fillStyle = COL.text;
+  ctx.font = "bold 14px system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("あなた (P1)", pad, top + barH + 16);
+  ctx.textAlign = "right";
+  ctx.fillText("CPU (P2)", W - pad, top + barH + 16);
+  ctx.textAlign = "left";
+}
+
+function drawBar(x, y, w, h, ratio, color, leftFill){
+  ratio = Math.max(0, Math.min(1, ratio));
+  ctx.fillStyle = "#20242e";
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = color;
+  var fw = w * ratio;
+  if (leftFill) {
+    ctx.fillRect(x, y, fw, h);
+  } else {
+    ctx.fillRect(x + (w - fw), y, fw, h);
+  }
+  ctx.strokeStyle = "#3a4050";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x, y, w, h);
+}
+
+function drawFighter(f){
+  var body = bodyRect(f);
+  var col = f.color;
+  var isFlash = f.flash > 0 && (Math.floor(f.flash/2) % 2 === 0);
+
+  // 影
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath();
+  ctx.ellipse(f.x, GROUND_Y + 4, f.w*0.6, 8, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // 胴体
+  ctx.fillStyle = isFlash ? COL.hurt : col;
+  roundRect(body.x, body.y, body.w, body.h, 8);
+  ctx.fill();
+
+  // ガード表示
+  if (f.guarding) {
+    ctx.strokeStyle = COL.guard;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    var gx2 = f.facing === 1 ? body.x - 6 : body.x + body.w + 6;
+    ctx.moveTo(gx2, body.y + 10);
+    ctx.lineTo(gx2, body.y + body.h - 10);
+    ctx.stroke();
+  }
+
+  // 頭
+  var headR = 16;
+  var headY = body.y - headR + 4;
+  ctx.fillStyle = isFlash ? COL.hurt : shade(col, 20);
+  ctx.beginPath();
+  ctx.arc(f.x, headY, headR, 0, Math.PI*2);
+  ctx.fill();
+  // 目（向き表示）
+  ctx.fillStyle = "#0e1016";
+  ctx.beginPath();
+  ctx.arc(f.x + f.facing*6, headY - 2, 3, 0, Math.PI*2);
+  ctx.fill();
+
+  // 腕（攻撃中は前方に伸ばす）
+  ctx.strokeStyle = shade(col, -25);
+  ctx.lineWidth = 8;
+  ctx.lineCap = "round";
+  var shoulderY = body.y + 22;
+  var isPunch = f.attack && (f.attack.key === "lp" || f.attack.key === "hp") && f.attack.phase === "active";
+  var armLen = isPunch ? (f.attack.def.reach + 14) : 18;
+  ctx.beginPath();
+  ctx.moveTo(f.x, shoulderY);
+  ctx.lineTo(f.x + f.facing * armLen, shoulderY + (isPunch ? -4 : 8));
+  ctx.stroke();
+
+  // 脚（キック中は前方に伸ばす）
+  var hipY = body.y + body.h;
+  var isKick = f.attack && (f.attack.key === "lk" || f.attack.key === "hk") && f.attack.phase === "active";
+  ctx.beginPath();
+  if (isKick) {
+    var kickLen = f.attack.def.reach + 12;
+    ctx.moveTo(f.x, hipY - 20);
+    ctx.lineTo(f.x + f.facing * kickLen, hipY - f.attack.def.yoff + 30);
+    ctx.moveTo(f.x, hipY);
+    ctx.lineTo(f.x - f.facing * 6, hipY + 0);
+  } else {
+    ctx.moveTo(f.x - 8, hipY - 16);
+    ctx.lineTo(f.x - 8, hipY);
+    ctx.moveTo(f.x + 8, hipY - 16);
+    ctx.lineTo(f.x + 8, hipY);
+  }
+  ctx.stroke();
+
+  // 攻撃判定の可視化（activeのみ）
+  var hb = attackHitbox(f);
+  if (hb) {
+    var strong = (f.attack.key === "hp" || f.attack.key === "hk");
+    ctx.fillStyle = strong ? "rgba(244,163,64,0.55)" : "rgba(244,163,64,0.30)";
+    ctx.fillRect(hb.x, hb.y, hb.w, hb.h);
+    ctx.strokeStyle = COL.amber;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(hb.x, hb.y, hb.w, hb.h);
+  }
+}
+
+function roundRect(x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function shade(hex, amt){
+  // hex "#rrggbb" を amt(%) 明暗
+  var c = hex.replace("#","");
+  var r = parseInt(c.substr(0,2),16);
+  var g = parseInt(c.substr(2,2),16);
+  var b = parseInt(c.substr(4,2),16);
+  r = Math.max(0, Math.min(255, r + Math.round(255*amt/100)));
+  g = Math.max(0, Math.min(255, g + Math.round(255*amt/100)));
+  b = Math.max(0, Math.min(255, b + Math.round(255*amt/100)));
+  return "rgb(" + r + "," + g + "," + b + ")";
+}
+
+// ---------- HUD ----------
+function drawHUD(raw, it){
+  var hx = W - 232, hy = 60, hw = 216, hh = 180;
+  ctx.fillStyle = "rgba(20,23,31,0.92)";
+  roundRect(hx, hy, hw, hh, 8);
+  ctx.fill();
+  ctx.strokeStyle = COL.line;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.textAlign = "left";
+  // タイトル
+  ctx.fillStyle = COL.amber;
+  ctx.font = "bold 11px system-ui, sans-serif";
+  ctx.fillText("入力モニタ (HUD)", hx + 10, hy + 16);
+
+  // パッドid
+  ctx.fillStyle = COL.dim;
+  ctx.font = "10px system-ui, sans-serif";
+  var idText = raw.id;
+  if (idText.length > 30) idText = idText.substr(0, 29) + "…";
+  ctx.fillText("id: " + idText, hx + 10, hy + 30);
+
+  // 経路（WebSocket か Gamepad API か）と、その状態
+  var listY = hy + 44;
+  if (raw.src === "ws") {
+    ctx.fillStyle = COL.guard;
+    ctx.fillText("経路: WebSocket (LLMCon)", hx + 10, listY);
+    ctx.fillStyle = wsOpen ? COL.guard : COL.p2;
+    ctx.fillText(wsOpen ? "つながっている" : "切れている", hx + 10, listY + 12);
+    ctx.fillStyle = "#6b7280";
+    var hostText = wsHost || "-";
+    if (hostText.length > 24) hostText = hostText.substr(0,23) + "…";
+    ctx.fillText(hostText, hx + 10, listY + 24);
+  } else {
+    ctx.fillStyle = COL.dim;
+    ctx.fillText("経路: Gamepad API", hx + 10, listY);
+    if (typeof WebSocket !== "undefined") {
+      ctx.fillStyle = "#6b7280";
+      ctx.fillText(wsOpen ? "(WS待機中)" : "(WS未接続)", hx + 132, listY);
+    }
+    for (var i = 0; i < padOrder.length && i < 2; i++){
+      var idx = padOrder[i];
+      var gp = pads[idx];
+      var nm = gp ? (gp.id || "pad") : "pad";
+      if (nm.length > 20) nm = nm.substr(0,19) + "…";
+      var active = (idx === activePad);
+      ctx.fillStyle = active ? COL.amber : COL.dim;
+      ctx.fillText((active ? "▶ " : "  ") + "["+idx+"] " + nm, hx + 10, listY + 12 + i*11);
+    }
+  }
+
+  // ボタンランプ
+  var lampY = hy + 92;
+  var lamps = [
+    ["A", raw.btn.A], ["B", raw.btn.B], ["X", raw.btn.X], ["Y", raw.btn.Y],
+    ["LB", raw.btn.LB], ["RB", raw.btn.RB], ["LT", raw.btn.LT], ["RT", raw.btn.RT]
+  ];
+  var lx = hx + 10, ly = lampY;
+  for (var j = 0; j < lamps.length; j++){
+    var on = lamps[j][1];
+    var col = (j % 4);
+    var row = Math.floor(j / 4);
+    var cellX = lx + col * 50;
+    var cellY = ly + row * 20;
+    ctx.fillStyle = on ? COL.amber : "#2a2f3b";
+    roundRect(cellX, cellY, 16, 14, 3);
+    ctx.fill();
+    ctx.fillStyle = on ? "#0e1016" : COL.dim;
+    ctx.font = "bold 9px system-ui, sans-serif";
+    ctx.fillText(lamps[j][0], cellX + 20, cellY + 11);
+  }
+
+  // 十字ランプ
+  var dY = lampY + 42;
+  ctx.fillStyle = COL.dim;
+  ctx.font = "9px system-ui, sans-serif";
+  ctx.fillText("十字:", hx + 10, dY + 6);
+  var dpad = [
+    ["←", raw.btn.DLEFT], ["↑", raw.btn.DUP], ["↓", raw.btn.DDOWN], ["→", raw.btn.DRIGHT]
+  ];
+  for (var d = 0; d < dpad.length; d++){
+    var dx = hx + 40 + d * 20;
+    ctx.fillStyle = dpad[d][1] ? COL.amber : "#2a2f3b";
+    roundRect(dx, dY - 6, 16, 14, 3);
+    ctx.fill();
+    ctx.fillStyle = dpad[d][1] ? "#0e1016" : COL.dim;
+    ctx.font = "bold 10px system-ui, sans-serif";
+    ctx.fillText(dpad[d][0], dx + 3, dY + 5);
+  }
+
+  // 左スティック位置（小さな丸）
+  var stX = hx + 150, stY = dY + 8, stR = 20;
+  ctx.strokeStyle = "#3a4050";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(stX, stY, stR, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.strokeStyle = "#2a2f3b";
+  ctx.beginPath();
+  ctx.moveTo(stX - stR, stY); ctx.lineTo(stX + stR, stY);
+  ctx.moveTo(stX, stY - stR); ctx.lineTo(stX, stY + stR);
+  ctx.stroke();
+  var dotX = stX + raw.axX * stR;
+  var dotY = stY + raw.axY * stR;
+  var moving = Math.abs(raw.axX) > 0.4 || Math.abs(raw.axY) > 0.4;
+  ctx.fillStyle = moving ? COL.amber : "#7de08a";
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, 4, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = COL.dim;
+  ctx.font = "8px system-ui, sans-serif";
+  ctx.fillText("Lスティック", stX - 20, stY + stR + 10);
+}
+
+// 起動
+requestAnimationFrame(tick);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    プラットフォームに依存しない中核。Windows でも mac でも Linux でも動く。
+    ここには ViGEm も Windows.Gaming.Input も winmm も NAudio も WPF も入れないこと。
+    それらは、この層が定義する抽象（IPadSink、IPadSource、IHiResTimer）の実装として、
+    プラットフォームごとのプロジェクトが与える。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>CntlLevelConnection.Core</AssemblyName>
+    <RootNamespace>CntlLevelConnection</RootNamespace>
+    <Version>0.3.0</Version>
+    <Company>Kazutaka Kurihara</Company>
+    <Authors>Kazutaka Kurihara</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ウェブの配信と MCP のホストのために、ASP.NET Core を参照する。これは環境に依存しない。 -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="ModelContextProtocol" Version="1.4.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,41 @@
+<style>
+#oh{height:100%;box-sizing:border-box;background:#14161f;color:#dde;
+    font-family:'Segoe UI',Arial,sans-serif;display:flex;align-items:center;
+    justify-content:flex-end;padding-right:6%;}
+#oh .note{position:absolute;left:4%;top:8%;max-width:34%;font-size:13px;line-height:1.7;color:#9fb0ff;}
+#oh .note b{color:#dde;}
+/* 右手だけで届く範囲に、移動と主要なボタンをまとめる。
+   親指の付け根を中心に、指の届く弧の内側へ配置する。 */
+#oh .hand{position:relative;width:340px;height:340px;}
+#oh .b{position:absolute;border-radius:50%;display:flex;align-items:center;
+       justify-content:center;font-weight:bold;color:#fff;
+       box-shadow:0 3px 8px rgba(0,0,0,.45);user-select:none;}
+#oh .dp{position:absolute;background:#2b2f42;color:#cfd6ff;border-radius:10px;
+        display:flex;align-items:center;justify-content:center;font-size:20px;}
+</style>
+<div id="oh">
+  <div class="note">
+    <b>右手だけで遊ぶための配置</b><br>
+    移動の十字を親指の届く内側に置き，攻撃のボタンを人差し指から薬指の弧に沿って並べた．
+    手を持ち替えずに，移動と攻撃を同時に行える．<br><br>
+    ボタンの大きさは，届きにくい位置ほど大きくしてある．フィッツの法則により，
+    遠い的は大きくしないと同じ速さで押せないためである．
+  </div>
+  <div class="hand">
+    <!-- 移動：親指の届く内側 -->
+    <div class="dp" data-btn="DUp"    style="left:96px; top:150px; width:56px;height:44px;">▲</div>
+    <div class="dp" data-btn="DLeft"  style="left:36px; top:200px; width:56px;height:44px;">◀</div>
+    <div class="dp" data-btn="DRight" style="left:156px;top:200px; width:56px;height:44px;">▶</div>
+    <div class="dp" data-btn="DDown"  style="left:96px; top:250px; width:56px;height:44px;">▼</div>
+
+    <!-- 攻撃：指の弧に沿って。遠いものほど大きい -->
+    <div class="b" data-btn="A"  style="left:214px;top:236px;width:62px;height:62px;background:#3fae6a;font-size:20px;">A</div>
+    <div class="b" data-btn="B"  style="left:244px;top:158px;width:66px;height:66px;background:#c94b4b;font-size:21px;">B</div>
+    <div class="b" data-btn="X"  style="left:236px;top:76px; width:70px;height:70px;background:#3f6fd8;font-size:22px;">X</div>
+    <div class="b" data-btn="Y"  style="left:170px;top:22px; width:74px;height:74px;background:#d8a23f;font-size:23px;">Y</div>
+
+    <!-- 補助 -->
+    <div class="dp" data-btn="Start" style="left:22px;top:36px;width:64px;height:34px;font-size:13px;">Menu</div>
+    <div class="dp" data-btn="LB"    style="left:22px;top:92px;width:64px;height:40px;font-size:14px;">LB</div>
+  </div>
+</div>
