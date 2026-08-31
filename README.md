@@ -93,7 +93,7 @@ dotnet run --project CntlLevelConnection.Host -- --port 8777 --sink websocket
 
 ## 論文
 
-丸山 礼華, 栗原 一貴. LLMCon：コントローラ層で遊び方を作り替える外付けゲーム拡張.
+栗原 一貴, 丸山 礼華. LLMCon：コントローラ層で遊び方を作り替える外付けゲーム拡張.
 WISS 2026 投稿論文.
 
 難易度調整、スキル差調整、ゲーム接続、アクセシビリティの向上、ゲーミフィケーションの
