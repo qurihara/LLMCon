@@ -45,6 +45,20 @@ dotnet publish CntlLevelConnection\CntlLevelConnection.csproj `
 マイクのしきい値ボタンを既定で有効にします。別の固定製品を作るときは、この定義とプロファイルを
 複製して差し替えます。
 
+KuriCon 用の実行ファイルは、別に書き出します。製品の名前と説明を実行ファイルに埋めるためです
+（通知の見出しなどに、内部の名前が出ないようにする。Issue #20）。リポジトリのルートで実行します。
+
+```powershell
+dotnet publish CntlLevelConnection\CntlLevelConnection.csproj `
+  -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:Product=KuriCon -p:AssemblyTitle=KuriCon `
+  -o publish-kuricon
+```
+
+`AssemblyTitle` は、実行ファイルの「説明」になります。Windows の通知の見出しは、製品名ではなく
+この説明を読みます。指定を忘れると、利用者の画面に内部の名前が出ます。
+
 ## 3. 使い方
 
 1. スタートメニューの LLMCon から起動します。

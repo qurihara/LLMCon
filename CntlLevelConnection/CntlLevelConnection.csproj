@@ -15,6 +15,9 @@
     <Company>Kazutaka Kurihara</Company>
     <Authors>Kazutaka Kurihara</Authors>
     <Product>LLMCon</Product>
+    <!-- 通知の見出しに出る名前。指定しないと AssemblyName（内部の名前）が出る（Issue #20、#24）。
+         公開版の書き出しでは、ここが LLMCon に置き換わる。KuriCon の書き出しは -p:AssemblyTitle で上書きする。 -->
+    <AssemblyTitle>LLMCon</AssemblyTitle>
     <Copyright>Copyright © Kazutaka Kurihara</Copyright>
   </PropertyGroup>
 

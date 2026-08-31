@@ -43,6 +43,13 @@ Source: "..\publish\CntlLevelConnection.exe"; DestDir: "{app}"; DestName: "{#MyA
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"
 
+; 消すための入口を、スタートメニューにも置く。
+; Windows 11 の「設定」の「インストールされているアプリ」に、この製品が出てこないことがある
+; （利用者ごとの場所へ入れる形だと出ないことがある。2026/8/7 に実機で確認した）。
+; 設定から消せないと、利用者は消す方法を失う。ここに置けば必ず辿り着ける。
+; KuriCon 側には最初から置いてあった。こちらにも同じものを置く（Issue #24）。
+Name: "{autoprograms}\{#MyAppName} をアンインストール"; Filename: "{uninstallexe}"
+
 [Languages]
 ; 画面の文言を日本語にする。Japanese.isl は Inno Setup に同梱されている。
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
