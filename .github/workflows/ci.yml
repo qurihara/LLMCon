@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core-tests:
+    # 中核部（CntlLevelConnection.Core）は Windows に依存しないので Linux で検査する。
+    # Windows 専用のアプリ本体（WPF、ViGEm）はこの検査の対象外である。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet test CntlLevelConnection.Core.Tests --configuration Release
