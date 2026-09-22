@@ -18,10 +18,10 @@ LLMCon は、大規模言語モデルから操作できる仮想ゲームコン�
 難易度調整、スキル差調整、異なるゲームの接続、アクセシビリティの向上、ゲーミフィケーションの
 5つの応用について、9つの事例が実際に動いている様子（3分57秒）。
 
-<video src="https://github.com/qurihara/LLMCon/raw/main/video/llmcon_wiss2026.mp4" controls width="100%"></video>
+[![紹介動画（3分57秒）](video/thumb_video.png)](video/llmcon_wiss2026.mp4)
 
-上で再生できないときは [video/llmcon_wiss2026.mp4](video/llmcon_wiss2026.mp4) を開くと
-GitHub の画面で再生できる。場面の一覧は [video/README.md](video/README.md) にある。
+画像をクリックすると、GitHub の画面でそのまま再生できる（ファイルは
+[video/llmcon_wiss2026.mp4](video/llmcon_wiss2026.mp4)）。場面の一覧は [video/README.md](video/README.md) にある。
 
 ## 5分で試す
 
