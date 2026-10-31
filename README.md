@@ -19,9 +19,10 @@ LLMCon は、大規模言語モデルから操作できる仮想ゲームコン�
 5つの応用について、論文を投稿した時点の9つの事例が実際に動いている様子（3分57秒）。
 最終版の論文では事例を6つに絞った。動画の場面と最終版の論文の節との対応は [video/README.md](video/README.md) にある。
 
-[![紹介動画（3分57秒）](video/thumb_video.png)](video/llmcon_wiss2026.mp4)
+[![紹介動画（3分57秒）](video/thumb_video.png)](https://unryu.org/LLMCon/video/llmcon_wiss2026.mp4)
 
-画像をクリックすると、GitHub の画面でそのまま再生できる（ファイルは
+画像をクリックすると、ブラウザで動画が再生される（GitHub Pages から配信している
+https://unryu.org/LLMCon/video/llmcon_wiss2026.mp4 を開く。ファイルの本体は
 [video/llmcon_wiss2026.mp4](video/llmcon_wiss2026.mp4)）。
 
 ## 5分で試す
