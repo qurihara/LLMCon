@@ -29,7 +29,7 @@
 （© CAPCOM）。ゲームのコードやデータには手を加えておらず、LLMCon はコントローラの入力を
 書き換えているだけである。
 
-また、Jump King の自動攻略の事例の動画 `video/jumpking_llmcon_autoplay.mp4` にも、
+また、Jump King の自動攻略の事例の動画 `video/jumpking_llmcon_autoplay_v2.mp4` にも、
 事例の動作を示すために、ゲームの画面が映っている。この画面の権利は Nexile にある。
 この事例で使った Steam ワークショップの MOD と、第三者の模擬環境 jumpking-rl は、このリポジトリに含めていない。
 ゲームのコードやデータには手を加えておらず、LLMCon はコントローラの入力を送っているだけである。

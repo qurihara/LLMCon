@@ -98,9 +98,9 @@ Raspberry Pi Pico を差し込むだけで使えるコントローラである�
 
 ## Jump King の自動攻略（AI が Jump King に挑む）
 
-`jumpking_llmcon_autoplay.mp4` は、LLMCon と大規模言語モデル（Claude）を使って、市販の登山ゲーム「Jump King」（Nexile）を、
+`jumpking_llmcon_autoplay_v2.mp4` は、LLMCon と大規模言語モデル（Claude）を使って、市販の登山ゲーム「Jump King」（Nexile）を、
 ゲームのソースコードに触れずに外から自動で攻略した事例の、すべての試行をつないだダイジェストである（2026年10月に作成）。
-3分38秒。https://unryu.org/LLMCon/video/jumpking_llmcon_autoplay.mp4 を開くと、ブラウザで再生できる（GitHub Pages から配信している）。
+3分38秒。https://unryu.org/LLMCon/video/jumpking_llmcon_autoplay_v2.mp4 を開くと、ブラウザで再生できる（GitHub Pages から配信している）。
 論文には含まれていない事例である。
 
 Jump King では、ボタンを押す長さ（溜め）で跳ぶ高さと距離が決まり、王が落ちると何画面も下まで戻される。
@@ -132,6 +132,7 @@ Claude の判断（プログラムの直しなど）と、プログラムの自�
 ゲーム、LLMCon、自動攻略のプログラムは ROG Ally X で動かした。
 
 ゲームの画面の権利は Nexile にある。詳しくは、リポジトリの根にある NOTICE.md を読むこと。
+締めのクレジットの背景は、段階19の2回目の録画の、頂上の画面43（夕日と姫）のコマである（MOD の表示の文字は消した）。
 読み上げの声は VOICEVOX:ずんだもん、背景音楽は "Pixel Peeker Polka - slower" Kevin MacLeod（incompetech.com、CC BY 4.0）である。
 
 ## TetWISS 2026（議論の活発さで、発表ごとのテトリスが上手くなる）
