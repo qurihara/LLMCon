@@ -30,9 +30,9 @@
 
 ## Finalize Fantasy with LLMCon
 
-`finalize_fantasy_with_llmcon_v2.mp4` は、LLMCon の活用事例として、ゲームをやめやすくするタイマー Finalize Fantasy
+`finalize_fantasy_with_llmcon_v3.mp4` は、LLMCon の活用事例として、ゲームをやめやすくするタイマー Finalize Fantasy
 （https://protopedia.net/prototype/6687 ）を LLMCon の上で作り直したものが動いている様子である（2026年10月に作成）。
-3分23秒。https://unryu.org/LLMCon/video/finalize_fantasy_with_llmcon_v2.mp4 を開くと、ブラウザで再生できる（GitHub Pages から配信している）。論文には含まれていない事例である。
+3分23秒。https://unryu.org/LLMCon/video/finalize_fantasy_with_llmcon_v3.mp4 を開くと、ブラウザで再生できる（GitHub Pages から配信している）。論文には含まれていない事例である。
 
 終了予定の時刻が近づくと、大規模言語モデルが画面から推定したゲームに合わせて作った制限の候補を、本人が選び、
 LLMCon がその制限をコントローラの層で掛ける。テトリス、スペースインベーダー、アステロイドの3つのゲームで、
