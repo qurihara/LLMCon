@@ -19,6 +19,21 @@
 `games/` に入っているのは、動作を確かめるために自分で書いた小さなゲームであり、
 上記の再実装とは別のものである。
 
+## 落ち物パズル異種格闘技戦の動画で用いたゲーム
+
+活用事例の動画 `video/fallblock_versus_with_llmcon_v2.mp4` では、次の4つの再実装を用いた。
+**それらのコードはこのリポジトリに含めていない。** いずれのゲームのコードにも手を加えていない。
+
+| ゲーム | 配布元 | ライセンス |
+|---|---|---|
+| テトリスの再実装 | https://github.com/jakesgordon/javascript-tetris | MIT |
+| ぷよぷよの再実装 | https://github.com/takekawa/canvas-puyo | README に記載の MIT |
+| ドクターマリオ風のゲーム | https://github.com/you-sk/drmario-clone | MIT |
+| コラムスの再実装 | https://github.com/jcfieldsdev/columns | MIT |
+
+4つとも、描画はプログラムによる図形で、元の市販のゲームの図案は入っていない。
+コラムスの再実装の背景の写真は Pexels のもので、配布物に撮影者の表記がある。
+
 ## 市販のゲーム
 
 論文では市販の対戦格闘ゲームでの動作も報告している。市販のゲームのコードと画面写真は、
