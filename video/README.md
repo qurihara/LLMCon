@@ -159,8 +159,8 @@ TetWISS 2026 では、登壇発表ごとにテトリスを1つずつ割り当て
 
 ## 落ち物パズル異種格闘技戦（別々の落ち物パズルを、妨害でつないで対戦する）
 
-`fallblock_versus_with_llmcon_v2.mp4` は、LLMCon を使って、別々の既存の落ち物パズルをつなぎ、対戦のゲームにした事例の様子である（2026年11月に作成）。
-2分38秒。https://unryu.org/LLMCon/video/fallblock_versus_with_llmcon_v2.mp4 を開くと、ブラウザで再生できる（GitHub Pages から配信している）。
+`fallblock_versus_llmcon_v2.mp4` は、LLMCon を使って、別々の既存の落ち物パズルをつなぎ、対戦のゲームにした事例の様子である（2026年11月に作成）。
+2分38秒。https://unryu.org/LLMCon/video/fallblock_versus_llmcon_v2.mp4 を開くと、ブラウザで再生できる（GitHub Pages から配信している）。
 論文には含まれていない事例である。
 
 使うのは、テトリス、ぷよぷよ、コラムス、ドクターマリオ風のゲームの、公開されている再実装4つである。どのゲームのコードにも手を加えていない。
