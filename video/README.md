@@ -52,6 +52,7 @@ LLMCon がその制限をコントローラの層で掛ける。テトリス、�
 
 `conductive_tetris_controller_play.mp4` は、このコントローラでテトリスを遊んでいるところを撮った短い動画である（13秒、2026年11月に撮影）。
 https://unryu.org/LLMCon/video/conductive_tetris_controller_play.mp4 を開くと、ブラウザで再生できる（GitHub Pages から配信している）。
+同じ動画を幅 320 に縮めた動く画像 `conductive_tetris_controller_play.gif` も置いてある（ProtoPedia の本文に表示するため）。
 
 論文の5.4節では、大規模言語モデル（Claude Opus 5）が、テトリスに要る5つの入力（左へ移動、右へ移動、回転、1マス落とす、開始）
 だけを備えた右手用のコントローラを、ウェブ版の仮想コントローラとして設計した。
