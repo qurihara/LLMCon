@@ -186,3 +186,26 @@ TetWISS 2026 では、登壇発表ごとにテトリスを1つずつ割り当て
 ゲームと LLMCon（1P と 2P に1つずつ）と自動プレイヤは、すべて1台の Mac で動かした。読み上げの声は VOICEVOX:玄野武宏である。
 
 使ったゲームの配布元とライセンスは、リポジトリの根にある NOTICE.md に書いた。
+
+## LLMCon Hub（Raspberry Pi で LLMCon を動かし、ふつうのコントローラとしてゲーム機や PC につなぐ）
+
+![LLMCon Hub の接続の全体像](llmconhub_overview.png)
+
+LLMCon Hub は、LLMCon を小さなコンピュータ（Raspberry Pi 4）の上で動かし、Raspberry Pi そのものを Nintendo Switch の Pro コントローラとして、ゲーム機や PC につなぐためのものである（2026年11月に作成）。
+論文には含まれていない、LLMCon の本体を広げるサブプロジェクトである。
+
+これまでの LLMCon は、Windows の PC の中で仮想の Xbox 360 コントローラを作っていた。
+LLMCon Hub は、LLMCon を物理のゲームパッドとゲーム機のあいだに挟む、独立した1つの機器にした。そのため、ゲームを動かす機械の上で LLMCon を動かさなくても、Switch や別の PC のゲームを拡張できる。
+
+物理のゲームパッド、スマートフォンのブラウザのウェブ版コントローラ、大規模言語モデル（Claude）からの入力を1か所に集め、LLMCon のコアがこれまでと同じ規則で改変してから、Bluetooth か USB ケーブルでゲーム機や PC へ出す。
+大規模言語モデルは、別の機械から MCP で規則を伝える。Tailscale を通せば、離れた場所からでも届く。
+ゲームの側からは、ふつうの Pro コントローラに見える。ゲームにも、ゲーム機や PC にも、手を加えない。
+
+2026年11月2日の時点で、次のことを確かめた。
+
+- Bluetooth で Windows の PC（ROG Ally）につなぎ、Steam が「Nintendo Switch Pro Controller」として認識した。
+- Steam から起動したストリートファイター6 で、MCP から送ったボタンと十字キーが効いた。
+- Raspberry Pi の中で、LLMCon の状態を Bluetooth の部品に渡すまでの時間は、60回の試行で中央値約1ミリ秒であった。
+
+Nintendo Switch との接続、USB ケーブルでの接続、物理のゲームパッドの経路は、これから確かめる。上の図は、これらがすべて動いたときの姿である。
+実装は、このリポジトリに追って加える。
