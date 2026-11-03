@@ -38,6 +38,7 @@ LLMCon Hub は、LLMCon を Raspberry Pi の上で動かし、Raspberry Pi そ�
   - Bluetooth の経路：パッドの入力の事象から、Bluetooth の送り手（nxbt）へ渡し終えるまで、中央値 1.42 ミリ秒、95パーセンタイル 2.00 ミリ秒（200の変化のすべて）。
   - このあとの、USB の読み取りの間隔や Bluetooth の無線の区間で増える時間は、まだ測っていない。
 - 初代の Nintendo Switch は扱わない（2026-11-03 に決めた）。
+- 1台の Raspberry Pi 4 で LLMCon を2つ同時に動かし（`MODE=dual`）、USB の Pro コントローラ（1P、MCP は 8777番）と Bluetooth の Pro コントローラ（2P、MCP は 8778番）を同じ PC につないだ。Steam は2台の Nintendo Switch Pro Controller として認識し、テストの画面で、1P に送った入力は USB のほうだけに、2P に送った入力は Bluetooth のほうだけに出た。
 
 ## フォルダ
 
@@ -69,6 +70,7 @@ sudo reboot
 - 物理のゲームパッドは USB-A の口につなぐ。機体ごとの割り当ては `~/llmconhub/profile.json` に書く。起動のあとで挿したパッドも拾う。
 - MCP サーバは `http://<Raspberry Pi の番地>:8777/` で待ち受ける。既定では Tailscale の番地にだけ開く（Tailscale が無ければ 127.0.0.1）。離れた機械の大規模言語モデルから使うときは、Raspberry Pi に Tailscale を入れる。
 - 形を決め打ちしたいとき、Bluetooth で前の相手へ Raspberry Pi の側からつなぎ直したいときは、`/etc/llmconhub.conf` に `MODE=bt`、`RECONNECT=AA:BB:CC:DD:EE:FF` のように書く。書ける項目は `pi/autostart.sh` の先頭にある。
+- 1台で 1P と 2P の2つのコントローラを出すときは、`/etc/llmconhub.conf` に `MODE=dual` と書く。1P は USB の Pro コントローラ（MCP は 8777番、1つ目の物理のパッド）、2P は Bluetooth の Pro コントローラ（MCP は 8778番、2つ目の物理のパッド）になる。格闘ゲームのハンディキャップの対戦を、1台の Hub だけで受け持てる。
 - 動きの記録は `journalctl -u llmconhub -f` で読める。サービスを外すときは `sudo ~/llmconhub/pi/install_service.sh remove`。
 
 ## 自分で組み立てるとき

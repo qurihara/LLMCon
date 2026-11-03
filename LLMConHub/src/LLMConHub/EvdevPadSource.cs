@@ -49,6 +49,9 @@ public sealed class EvdevPadSource : IPadSource, IInputTimestamp, IDisposable
     // 見張りの糸が2秒ごとに探し直して開く。起動のあとで挿したパッドや、挿し直したパッドを拾うためである
     // （2026-11-03、起動のあとで挿した BUFFALO のパッドを、ホストが拾わなかった）。
     private volatile bool _auto;
+    // auto:N のときの順番（1から数える）。1台の Raspberry Pi で LLMCon を2つ動かすとき（MODE=dual）、
+    // 1つ目のホストは1つ目のパッドを、2つ目のホストは2つ目のパッドを読むために使う。
+    private volatile int _autoIndex = 1;
     private volatile bool _lost;
     private Thread? _watcher;
 
@@ -75,7 +78,9 @@ public sealed class EvdevPadSource : IPadSource, IInputTimestamp, IDisposable
     {
         var list = new List<PadInfo>();
         if (!Directory.Exists(_sysRoot)) return list;
-        foreach (var dir in Directory.GetDirectories(_sysRoot, "event*").OrderBy(d => d, StringComparer.Ordinal))
+        // event2 が event10 より先に来るように、番号の数で並べる
+        foreach (var dir in Directory.GetDirectories(_sysRoot, "event*")
+                     .OrderBy(d => int.TryParse(Path.GetFileName(d).AsSpan(5), out var k) ? k : int.MaxValue))
         {
             var id = Path.GetFileName(dir);
             var caps = ReadCaps(dir);
@@ -123,13 +128,18 @@ public sealed class EvdevPadSource : IPadSource, IInputTimestamp, IDisposable
     public void Select(string? id)
     {
         Close();
-        _auto = id == "auto";
+        _auto = id != null && (id == "auto" || id.StartsWith("auto:", StringComparison.Ordinal));
+        _autoIndex = 1;
+        if (_auto && id!.Length > 5 && int.TryParse(id.AsSpan(5), out var n) && n >= 1) _autoIndex = n;
         if (_auto) StartWatcher();
         if (string.IsNullOrEmpty(id)) return;
-        if (id == "auto") id = List().FirstOrDefault()?.Id;
+        if (_auto) id = NthPad(_autoIndex);
         if (id == null) { LastError = "ゲームパッドが見つかりません。"; return; }
         Open(id);
     }
+
+    /// <summary>番号の若い順に並べたパッドのうち、n 番目（1から数える）の識別子。無ければ null。</summary>
+    private string? NthPad(int n) => List().Skip(n - 1).FirstOrDefault()?.Id;
 
     /// <summary>プロファイルの機体ごとの割り当てを受け取る。パッドを開くたびに、VID と PID が合うものを当てる。</summary>
     public void UsePadProfiles(IReadOnlyList<PadProfile>? profiles) => _profiles = profiles;
@@ -145,7 +155,7 @@ public sealed class EvdevPadSource : IPadSource, IInputTimestamp, IDisposable
                 if (!_auto) continue;
                 bool open; lock (_lock) open = _fd >= 0;
                 if (open && !_lost) continue;
-                var id = List().FirstOrDefault()?.Id;
+                var id = NthPad(_autoIndex);
                 if (id == null) continue;
                 Close();
                 if (!_auto) continue;
