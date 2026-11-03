@@ -183,12 +183,20 @@ public static class LlmConHost
             {
                 case "mapping":
                     // 相手の標準のマッピングは壊さず、別の層として時間つきで重ねる。
-                    s.Engine.AddConnectionRules(a.Rules ?? Array.Empty<MappingRule>(), a.DurationSec ?? 1.0);
+                    s.Engine.AddConnectionRules(a.Rules ?? Array.Empty<MappingRule>(), a.DurationSec ?? 1.0, from);
                     s.Events.Add("recv", $"from {from} [mapping] {a.Rules?.Length ?? 0} rule(s) for {a.DurationSec ?? 1.0}s");
                     break;
                 case "inject_tap":
                     _ = InjectTapAsync(s.Engine, a.Buttons ?? Array.Empty<string>(), a.Frames ?? 3);
                     s.Events.Add("recv", $"from {from} [inject_tap] [{string.Join("+", a.Buttons ?? Array.Empty<string>())}] {a.Frames ?? 3}f");
+                    break;
+                case "clear":
+                    // 重ねた改変（mapping の作用）を、期限を待たずに外す。画面の判定で「K.O. になったらハンディキャップを外す」ために使う。
+                    // source を付けると、送り手（from）がその文字列で始まる改変だけを外す。付けなければ全部外す。
+                    s.Engine.ClearConnectionRules(a.Source);
+                    s.Events.Add("recv", string.IsNullOrEmpty(a.Source)
+                        ? $"from {from} [clear] connection rules cleared"
+                        : $"from {from} [clear] connection rules from '{a.Source}*' cleared");
                     break;
                 case "inject_macro":
                     if (!string.IsNullOrWhiteSpace(a.Macro)) _ = s.Macros.RunAsync(a.Macro!);

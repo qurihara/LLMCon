@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="920" viewBox="0 0 680 460" font-family="Hiragino Sans, Hiragino Kaku Gothic ProN, sans-serif">
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect width="680" height="460" fill="#ffffff"/>
+<g font-size="14" text-anchor="middle" dominant-baseline="central">
+<g><rect x="40" y="60" width="180" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.8"/><text x="130" y="80" fill="#3C3489" font-weight="600">Claude（LLM）</text><text x="130" y="99" fill="#534AB7" font-size="12">MCP、Tailscale 経由</text></g>
+<g><rect x="40" y="170" width="180" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.8"/><text x="130" y="190" fill="#3C3489" font-weight="600">ウェブ版コントローラ</text><text x="130" y="209" fill="#534AB7" font-size="12">スマホのブラウザ</text></g>
+<g><rect x="40" y="280" width="180" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.8"/><text x="130" y="300" fill="#3C3489" font-weight="600">物理のゲームパッド</text><text x="130" y="319" fill="#534AB7" font-size="12">USB-A に挿す</text></g>
+<rect x="260" y="40" width="190" height="320" rx="16" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.8"/>
+<text x="355" y="62" fill="#085041" font-weight="600">LLMCon Hub</text><text x="355" y="81" fill="#0F6E56" font-size="12">Raspberry Pi 4 の上で動く</text>
+<rect x="276" y="104" width="158" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/><text x="355" y="124" fill="#2C2C2A" font-weight="600">LLMCon のコア</text><text x="355" y="143" fill="#5F5E5A" font-size="12">規則で入力を改変</text>
+<rect x="276" y="184" width="158" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/><text x="355" y="204" fill="#2C2C2A" font-weight="600">MCP サーバ</text><text x="355" y="223" fill="#5F5E5A" font-size="12">ウェブ版も配信</text>
+<rect x="276" y="264" width="158" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/><text x="355" y="284" fill="#2C2C2A" font-weight="600">Pro コントローラ</text><text x="355" y="303" fill="#5F5E5A" font-size="12">として名乗る</text>
+<g><rect x="500" y="80" width="140" height="56" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.8"/><text x="570" y="100" fill="#712B13" font-weight="600">Nintendo Switch</text><text x="570" y="119" fill="#993C1D" font-size="12">ゲームは無改変</text></g>
+<g><rect x="500" y="240" width="140" height="56" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.8"/><text x="570" y="260" fill="#712B13" font-weight="600">PC の Steam</text><text x="570" y="279" fill="#993C1D" font-size="12">ゲームは無改変</text></g>
+</g>
+<g stroke="#5F5E5A" stroke-width="1.2" fill="none"><line x1="220" y1="88" x2="256" y2="88" marker-end="url(#a)"/><line x1="220" y1="198" x2="256" y2="198" marker-end="url(#a)"/><line x1="220" y1="308" x2="256" y2="308" marker-end="url(#a)"/></g>
+<g stroke="#0F6E56" stroke-width="1.6" fill="none">
+<line x1="450" y1="98" x2="496" y2="98" marker-end="url(#a)"/><line x1="450" y1="118" x2="496" y2="118" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<line x1="450" y1="258" x2="496" y2="258" marker-end="url(#a)"/><line x1="450" y1="278" x2="496" y2="278" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<line x1="120" y1="396" x2="160" y2="396"/><line x1="340" y1="396" x2="380" y2="396" stroke-dasharray="5 4"/></g>
+<g font-size="12" fill="#444441" dominant-baseline="central"><text x="170" y="396">Bluetooth（無線）</text><text x="390" y="396">USB-C ケーブル（有線）</text>
+<text x="340" y="430" text-anchor="middle">ゲームの側からは、ふつうの Pro コントローラに見える</text></g>
+</svg>

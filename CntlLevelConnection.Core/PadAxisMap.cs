@@ -22,17 +22,20 @@ public sealed record PadAxisMap(
     [property: Description("左トリガー。-1 で未割り当て")] int LT = -1,
     [property: Description("右トリガー。-1 で未割り当て")] int RT = -1,
     [property: Description("縦の軸を反転するか（多くのパッドは下が大きい値なので既定は真）")] bool InvertY = true,
-    [property: Description("左右のトリガーが1本の軸を共有する場合、その軸の番号。中央より上下でどちらかが踏まれたと見なす。-1 で使わない")] int SharedTrigger = -1)
+    [property: Description("左右のトリガーが1本の軸を共有する場合、その軸の番号。中央より上下でどちらかが踏まれたと見なす。-1 で使わない")] int SharedTrigger = -1,
+    [property: Description("十字キーを軸で報告するパッドで、十字キーの横の軸の番号。小さい側が左、大きい側が右。-1 で使わない")] int DpadX = -1,
+    [property: Description("十字キーの縦の軸の番号。小さい側が上、大きい側が下。-1 で使わない")] int DpadY = -1)
 {
     /// <summary>よくある並び。左スティックが軸0と軸1、右スティックが軸2と軸3、トリガーは未割り当て。</summary>
     public static readonly PadAxisMap Default = new();
 
     /// <summary>この割り当てが参照する最大の軸の番号（軸の数が足りているかの確認に使う）。</summary>
-    public int MaxAxisIndex => new[] { LX, LY, RX, RY, LT, RT, SharedTrigger }.Max();
+    public int MaxAxisIndex => new[] { LX, LY, RX, RY, LT, RT, SharedTrigger, DpadX, DpadY }.Max();
 
     public string Describe()
         => $"LX={Show(LX)} LY={Show(LY)} RX={Show(RX)} RY={Show(RY)} LT={Show(LT)} RT={Show(RT)}"
          + (SharedTrigger >= 0 ? $" sharedTrigger={SharedTrigger}" : "")
+         + (DpadX >= 0 || DpadY >= 0 ? $" dpadX={Show(DpadX)} dpadY={Show(DpadY)}" : "")
          + $" invertY={InvertY}";
 
     private static string Show(int i) => i < 0 ? "-" : i.ToString();

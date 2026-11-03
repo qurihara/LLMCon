@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LLMConHub の部品。LLMCon のコア（CntlLevelConnection.Core）に、次の2つを足す。
+    1. 確定したコントローラの状態を、同じ機械の別のプログラム（Bluetooth の出力を受け持つ橋渡しのプログラム）へ
+       UDP で送る出力先（UdpFrameSink）。IPadSink の3つ目の実装である。
+    2. Linux の evdev（/dev/input/event*）から物理のゲームパッドを読む入力源（EvdevPadSource）。
+    コアには手を加えない。Windows の版と画面を持たないホストは、この部品が無くてもこれまでどおり動く。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>LLMConHub</RootNamespace>
+    <AssemblyName>LLMConHub</AssemblyName>
+    <Version>0.1.0</Version>
+    <Company>Kazutaka Kurihara</Company>
+    <Authors>Kazutaka Kurihara</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\CntlLevelConnection.Core\CntlLevelConnection.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LLMConHub.Tests" />
+  </ItemGroup>
+
+</Project>

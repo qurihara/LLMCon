@@ -47,7 +47,8 @@ public sealed record ConnApply(
     string[]? Buttons = null,
     int? Frames = null,
     string? Macro = null,
-    string? From = null);
+    string? From = null,
+    string? Source = null);   // kind=clear のとき、送り手（From）がこの文字列で始まる改変だけを外す
 
 /// <summary>登録された接続1件。実行時の状態（並びの進み・直近の発火時刻）も持つ。</summary>
 public sealed class Connection

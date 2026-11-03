@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LLMConHub のホスト。Raspberry Pi（Linux、64ビット）の上で LLMCon のコアを動かすためのもの。
+    CntlLevelConnection.Host（画面を持たないホスト）と同じ引数を受け、次の2つを足す。
+      引数の sink に udp[=宛先:ポート] を書ける。  確定した状態を、Bluetooth の出力を受け持つ橋渡しのプログラムへ送る。
+      引数の pad に evdev[=event番号] を書ける。  物理のゲームパッドを evdev から読む。
+    mac でも組み立てて動かせる（物理のパッドは読めないが、ウェブ版コントローラと MCP からの入力は UDP へ出る）。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>llmconhub-host</AssemblyName>
+    <RootNamespace>LLMConHub.Host</RootNamespace>
+    <Version>0.1.0</Version>
+    <Company>Kazutaka Kurihara</Company>
+    <Authors>Kazutaka Kurihara</Authors>
+    <Product>LLMConHub Host</Product>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\CntlLevelConnection.Core\CntlLevelConnection.Core.csproj" />
+    <ProjectReference Include="..\LLMConHub\LLMConHub.csproj" />
+  </ItemGroup>
+
+</Project>

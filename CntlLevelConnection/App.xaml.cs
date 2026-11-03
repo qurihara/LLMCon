@@ -119,6 +119,9 @@ public partial class App : Application
         // Windows に固有の実装を、Core の抽象へ差し込む。
         // 高分解能タイマーは winmm、物理パッドの読み取りは Windows.Gaming.Input を使う。
         HiResTimer.Use(new WinMmHiResTimer());
+        // ウィンドウを隠しても 1 ミリ秒の待ちが保たれるよう、電源の調整から外す（Issue #32）。
+        bool throttlingOff = WinMmHiResTimer.OptOutOfPowerThrottling();
+        Console.Error.WriteLine($"[timer] power throttling opt-out: {(throttlingOff ? "ok" : "failed")}");
 
         // 出力先と物理パッドの読み取りを渡してループを開始する。
         // 失敗しても MCP と GUI は起動し、状態を GUI に表示する。

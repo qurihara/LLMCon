@@ -46,7 +46,7 @@ public sealed class ControllerEngine : IDisposable
 
     // コントローラ間接続による改変ルール（標準のマッピングとは別の層・絶対時刻で自動的に期限切れ）。
     private readonly object _connLock = new();
-    private readonly List<(MappingRule rule, double expiry)> _connRules = new();
+    private readonly List<(MappingRule rule, double expiry, string? source)> _connRules = new();
     private volatile int _connCount;
     public int ConnRuleCount => _connCount;
 
@@ -322,21 +322,30 @@ public sealed class ControllerEngine : IDisposable
     /// コントローラ間接続の作用として、人間入力への改変ルールを durationSec 秒だけ重ねる。
     /// 標準のマッピング（SetMapping）は上書きせず、別の層として合成し、期限が来たら自動的に消える。
     /// </summary>
-    public void AddConnectionRules(MappingRule[] rules, double durationSec)
+    public void AddConnectionRules(MappingRule[] rules, double durationSec, string? source = null)
     {
         if (rules is null || rules.Length == 0) return;
         double exp = _clock.Elapsed.TotalSeconds + Math.Max(0.001, durationSec);
         var normalized = Normalize(rules);
         lock (_connLock)
         {
-            foreach (var r in normalized) _connRules.Add((r, exp));
+            foreach (var r in normalized) _connRules.Add((r, exp, source));
             _connCount = _connRules.Count;
         }
     }
 
-    public void ClearConnectionRules()
+    /// <summary>
+    /// 重ねた改変を、期限を待たずに外す。sourcePrefix を渡すと、送り手（作用の from）がその文字列で
+    /// 始まるものだけを外す。ほかの送り手が同じ LLMCon に置いた改変を巻き込まないためである。
+    /// </summary>
+    public void ClearConnectionRules(string? sourcePrefix = null)
     {
-        lock (_connLock) { _connRules.Clear(); _connCount = 0; }
+        lock (_connLock)
+        {
+            if (string.IsNullOrEmpty(sourcePrefix)) _connRules.Clear();
+            else _connRules.RemoveAll(x => x.source is not null && x.source.StartsWith(sourcePrefix, StringComparison.Ordinal));
+            _connCount = _connRules.Count;
+        }
     }
 
     // ── human(GUI)入力 ──

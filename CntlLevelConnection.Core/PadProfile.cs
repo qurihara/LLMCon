@@ -76,7 +76,10 @@ public sealed class PadProfile
                $"      \"vid\": {vid},\n" +
                $"      \"pid\": {pid},\n" +
                $"      \"axes\": {{ \"lx\": {axes.LX}, \"ly\": {axes.LY}, \"rx\": {axes.RX}, \"ry\": {axes.RY}, " +
-               $"\"lt\": {axes.LT}, \"rt\": {axes.RT}, \"invertY\": {(axes.InvertY ? "true" : "false")} }}" +
+               $"\"lt\": {axes.LT}, \"rt\": {axes.RT}, \"invertY\": {(axes.InvertY ? "true" : "false")}" +
+               (axes.SharedTrigger >= 0 ? $", \"sharedTrigger\": {axes.SharedTrigger}" : "") +
+               (axes.DpadX >= 0 || axes.DpadY >= 0 ? $", \"dpadX\": {axes.DpadX}, \"dpadY\": {axes.DpadY}" : "") +
+               " }" +
                buttonsLine + "\n" +
                $"    }}\n" +
                $"  ]\n" +

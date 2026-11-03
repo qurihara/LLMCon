@@ -106,8 +106,10 @@ public sealed class McpControllerTools(ControllerEngine engine, MacroEngine macr
                  "lx=0 ly=1 rx=2 ry=3 with the triggers unmapped. Use -1 for \"not present\". invertY flips the " +
                  "vertical axes (most pads report down as the larger value, so this is normally true). " +
                  "If both triggers share one axis (resting mid-range, one direction each), give its number as " +
-                 "sharedTrigger and leave lt/rt at -1. Discover the numbers with get_pad_raw. The mapping is " +
-                 "remembered per pad.")]
+                 "sharedTrigger and leave lt/rt at -1. If the d-pad is reported as two axes (cheap SNES-style pads), " +
+                 "give them as dpadX/dpadY (low end = left/up) and set lx/ly to -1 so the d-pad does not also move the " +
+                 "left stick; dpadX/dpadY are honoured on Linux (LLMCon Hub) only for now. Discover the numbers with " +
+                 "get_pad_raw. The mapping is remembered per pad.")]
     public string SetPadAxes(
         [Description("raw axis for the left stick X")] int lx = 0,
         [Description("raw axis for the left stick Y")] int ly = 1,
@@ -116,10 +118,12 @@ public sealed class McpControllerTools(ControllerEngine engine, MacroEngine macr
         [Description("raw axis for the left trigger, -1 if none")] int lt = -1,
         [Description("raw axis for the right trigger, -1 if none")] int rt = -1,
         [Description("flip the vertical axes (usually true)")] bool invertY = true,
-        [Description("raw axis shared by both triggers, -1 if not shared")] int sharedTrigger = -1)
+        [Description("raw axis shared by both triggers, -1 if not shared")] int sharedTrigger = -1,
+        [Description("raw axis that is the d-pad's horizontal (low = left), -1 if none")] int dpadX = -1,
+        [Description("raw axis that is the d-pad's vertical (low = up), -1 if none")] int dpadY = -1)
     {
         if (!engine.HasPadSource) return "this platform has no physical pad support";
-        var map = new PadAxisMap(lx, ly, rx, ry, lt, rt, invertY, sharedTrigger);
+        var map = new PadAxisMap(lx, ly, rx, ry, lt, rt, invertY, sharedTrigger, dpadX, dpadY);
         engine.SetPadAxes(map);
         var raw = engine.ReadPadRaw();
         string note = raw != null && map.MaxAxisIndex >= raw.AxisCount

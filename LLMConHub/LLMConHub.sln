@@ -1,0 +1,49 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{71DAC410-8B19-46A1-93A0-CDB28B832EF0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LLMConHub", "src\LLMConHub\LLMConHub.csproj", "{12ED5F30-E1AC-4CCA-8EE9-91EC3905F9F3}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{DDD4885A-7613-4995-9E7E-166AA5B4AB39}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LLMConHub.Tests", "tests\LLMConHub.Tests\LLMConHub.Tests.csproj", "{76613377-4C18-4D31-A5DA-A42D1B6A5615}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CntlLevelConnection.Core", "..\CntlLevelConnection.Core\CntlLevelConnection.Core.csproj", "{0653E35F-99FA-4D97-A013-94BF742F3298}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LLMConHub.Host", "src\LLMConHub.Host\LLMConHub.Host.csproj", "{8110F215-12AC-4385-B61E-FC80B1080D90}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{12ED5F30-E1AC-4CCA-8EE9-91EC3905F9F3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{12ED5F30-E1AC-4CCA-8EE9-91EC3905F9F3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{12ED5F30-E1AC-4CCA-8EE9-91EC3905F9F3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{12ED5F30-E1AC-4CCA-8EE9-91EC3905F9F3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{76613377-4C18-4D31-A5DA-A42D1B6A5615}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{76613377-4C18-4D31-A5DA-A42D1B6A5615}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{76613377-4C18-4D31-A5DA-A42D1B6A5615}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{76613377-4C18-4D31-A5DA-A42D1B6A5615}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0653E35F-99FA-4D97-A013-94BF742F3298}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0653E35F-99FA-4D97-A013-94BF742F3298}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0653E35F-99FA-4D97-A013-94BF742F3298}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0653E35F-99FA-4D97-A013-94BF742F3298}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8110F215-12AC-4385-B61E-FC80B1080D90}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8110F215-12AC-4385-B61E-FC80B1080D90}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8110F215-12AC-4385-B61E-FC80B1080D90}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8110F215-12AC-4385-B61E-FC80B1080D90}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{12ED5F30-E1AC-4CCA-8EE9-91EC3905F9F3} = {71DAC410-8B19-46A1-93A0-CDB28B832EF0}
+		{76613377-4C18-4D31-A5DA-A42D1B6A5615} = {DDD4885A-7613-4995-9E7E-166AA5B4AB39}
+		{8110F215-12AC-4385-B61E-FC80B1080D90} = {71DAC410-8B19-46A1-93A0-CDB28B832EF0}
+	EndGlobalSection
+EndGlobal

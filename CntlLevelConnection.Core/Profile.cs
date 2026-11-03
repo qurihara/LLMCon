@@ -179,7 +179,7 @@ public sealed class LlmConOptions
                     o.PadAxes = new PadAxisMap(
                         GetInt("lx", d.LX), GetInt("ly", d.LY), GetInt("rx", d.RX), GetInt("ry", d.RY),
                         GetInt("lt", d.LT), GetInt("rt", d.RT), GetBool("invertY", d.InvertY),
-                        GetInt("sharedTrigger", d.SharedTrigger));
+                        GetInt("sharedTrigger", d.SharedTrigger), GetInt("dpadX", d.DpadX), GetInt("dpadY", d.DpadY));
                 }
                 if (root.TryGetProperty("pads", out var pads) && pads.ValueKind == JsonValueKind.Array)
                 {
@@ -198,7 +198,8 @@ public sealed class LlmConOptions
                             bool B(string n, bool f) => ea.TryGetProperty(n, out var v) ? v.ValueKind == JsonValueKind.True : f;
                             pf.Axes = new PadAxisMap(
                                 A("lx", d.LX), A("ly", d.LY), A("rx", d.RX), A("ry", d.RY),
-                                A("lt", d.LT), A("rt", d.RT), B("invertY", d.InvertY), A("sharedTrigger", d.SharedTrigger));
+                                A("lt", d.LT), A("rt", d.RT), B("invertY", d.InvertY), A("sharedTrigger", d.SharedTrigger),
+                                A("dpadX", d.DpadX), A("dpadY", d.DpadY));
                         }
                         if (e.TryGetProperty("buttons", out var eb)) pf.Buttons = eb.GetString();
                         list.Add(pf);

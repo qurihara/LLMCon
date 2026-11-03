@@ -15,6 +15,40 @@ public sealed class WinMmHiResTimer : IHiResTimer
     [DllImport("winmm.dll")] private static extern uint timeBeginPeriod(uint p);
     [DllImport("winmm.dll")] private static extern uint timeEndPeriod(uint p);
 
+    // Windows 11 は、ウィンドウが見えていないプロセスの timeBeginPeriod の要求を無視し、
+    // 実行の速さも落とすことがある（電源の調整）。そうなると Thread.Sleep(1) が約15.6ミリ秒になり、
+    // 出力のループが毎秒約64回に落ちる（Issue #32 の段階3で、押す長さが最大約15ミリ秒ずれた）。
+    // SetProcessInformation でこのプロセスをその調整から外す。Windows 10 の古い版では失敗するが、害はない。
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PowerThrottlingState { public uint Version; public uint ControlMask; public uint StateMask; }
+
+    private const int ProcessPowerThrottling = 4;                 // PROCESS_INFORMATION_CLASS の値
+    private const uint ThrottlingCurrentVersion = 1;
+    private const uint ThrottlingExecutionSpeed = 0x1;            // PROCESS_POWER_THROTTLING_EXECUTION_SPEED
+    private const uint ThrottlingIgnoreTimerResolution = 0x4;     // PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetProcessInformation(IntPtr hProcess, int infoClass, ref PowerThrottlingState info, uint size);
+
+    [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();
+
+    /// <summary>
+    /// このプロセスを、Windows の電源の調整（タイマーの分解能の無視と、実行の速さの抑制）から外す。
+    /// ControlMask で2つの調整を「自分で決める」と宣言し、StateMask を0にして「どちらも使わない」とする。
+    /// 成功すれば true を返す。
+    /// </summary>
+    public static bool OptOutOfPowerThrottling()
+    {
+        var state = new PowerThrottlingState
+        {
+            Version = ThrottlingCurrentVersion,
+            ControlMask = ThrottlingExecutionSpeed | ThrottlingIgnoreTimerResolution,
+            StateMask = 0,
+        };
+        try { return SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, ref state, (uint)Marshal.SizeOf<PowerThrottlingState>()); }
+        catch { return false; }
+    }
+
     public IDisposable Request() => new Period();
 
     private sealed class Period : IDisposable
