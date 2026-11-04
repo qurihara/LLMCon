@@ -34,6 +34,25 @@
 4つとも、描画はプログラムによる図形で、元の市販のゲームの図案は入っていない。
 コラムスの再実装の背景の写真は Pexels のもので、配布物に撮影者の表記がある。
 
+## ゲーム接続の7つの事例の動画で用いたゲームと曲
+
+活用事例の動画 `video/game_pairing_llmcon_v5.mp4` は、LLMCon で既存のゲームと別のゲームをつなぐ7つの事例をまとめたものである。
+上の節の4つの落ち物パズルに加えて、次のゲームと曲を用いた。**それらのコードと音源はこのリポジトリに含めていない。** いずれのゲームのコードにも手を加えていない。
+
+| ゲーム、曲 | 配布元 | ライセンス |
+|---|---|---|
+| スペースインベーダーの再実装 | https://github.com/dwmkerr/spaceinvaders | MIT |
+| 倉庫番 | https://gist.github.com/straker/2fddb507d4bb6bec54ea2fdb022d020c | CC0 1.0 |
+| 2048 | https://github.com/gabrielecirulli/2048 | MIT |
+| 恐竜のゲーム（t-rex-runner） | https://github.com/wayou/t-rex-runner | BSD 3条項（Chromium の恐竜のゲームを取り出したもの） |
+| StepFever | https://github.com/religa/stepfever | MIT |
+| Sunniesnow | https://github.com/sunniesnow/sunniesnow | AGPL-3.0-or-later |
+| 曲「Into My Dream」 Lagoona/Andreas Viklund | https://github.com/TeamRizu/OutFox-Serenity （OutFox Serenity Volume 2） | CC BY 4.0 |
+
+「Into My Dream」の譜面は、OutFox Serenity Volume 2 に収められた 48productions と Daniel Rotwind によるものを用いた（2P の譜面は、画面を叩く形に直した）。譜面そのもののライセンスは、配布物に書かれていない。
+もぐらたたき、リズムゲーム、奥へ走るロボットのゲームは、大規模言語モデル（Claude）がその場で作ったものである。
+動画の冒頭で、百人一首かるた vs もぐらたたき（丸山礼華・栗原一貴、EC2024）の動画（https://www.youtube.com/watch?v=X1BmXal4_qQ ）の一部を引用した。
+
 ## 市販のゲーム
 
 論文では市販の対戦格闘ゲームでの動作も報告している。市販のゲームのコードと画面写真は、
