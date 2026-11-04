@@ -91,6 +91,9 @@ sudo reboot
 - 安いパッドには、最初にボタンが押されるまで何も報告しないものがある。そのあいだ、スティックと十字キーの軸は中央として扱う。
 - Windows の標準の仕組み（汎用の HID の読み方）は、USB の Pro コントローラの報告をボタンとして読まない。本物の Pro コントローラでも同じである。Steam は自分で読み直すので、Steam を通せば効く。
 - Steam のテストの画面は、Switch の B の長押しと＋で閉じる。確かめるときは、この2つを押さない。
+- PC（Steam）には、Bluetooth でつなぐことを勧める。USB でつなぐと、ROG Ally で Steam が動いているとき、つながった直後に Xbox Game Bar や ROG Ally の Command Center が開くことがあった（2026-11-04、毎回ではない）。そのあいだ LLMCon Hub は何も押しておらず、Steam が止まっていれば起きず、Bluetooth では起きなかった。原因は Steam の側の振る舞いと見ているが、突き止めていない。Switch では USB で問題なく動く。
+- 切り分けのために、選べる形を2つ残してある。`/etc/llmconhub.conf` に `export PROCON_DESC=vendor` と書くと、USB の記述子で入力の報告 0x30 をメーカー独自の63バイトとして宣言し、Windows の標準の読み取りがボタンを読まなくなる。`export LLMCONHUB_PROCON_GRIP=0` と書くと、報告の充電グリップの印を立てない。どちらも Game Bar の件は直らず、Switch では確かめていない。`export LLMCONHUB_USB_TRACE=/var/tmp/usb-trace.txt` と書くと、USB のやりとりの最初の600件を記録する。
+- Windows 版の LLMCon は、物理のパッドの一覧から Switch の Pro コントローラと Joy-Con を外す。Windows.Gaming.Input の素の読み取りが、これらの値をでたらめなボタンとして返すためである。
 - 格闘ゲーム用のスティック（GP2040-CE の PS4 の形など）は、Linux の標準の読み取りでボタンの名前と位置が合わない。GP2040-CE の PS4 の形は SDL の対応表（Razer Panthera PS4）で正しく読める。対応表に無い機体は、`pad_setup` で決めるか、`profile.json` に `"asJoystick": true` と軸の割り当てを書く。
 - ストリートファイター6 は、タイトル画面で最初にボタンを押したコントローラを1P にする。ほかのコントローラ（PC につないだアケコンなど）を使っていたときは、それを外してからタイトル画面で押す。
 - nxbt は、Switch との接続が2回切れると、その Switch のペアリングの情報を BlueZ から消す（nxbt/controller/server.py）。消えたあとは、Raspberry Pi の側からつなぎ直せないので、「持ちかた/順番を変える」の画面でペアリングし直す。

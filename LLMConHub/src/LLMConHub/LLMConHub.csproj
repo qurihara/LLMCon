@@ -8,7 +8,7 @@
     コアには手を加えない。Windows の版と画面を持たないホストは、この部品が無くてもこれまでどおり動く。
   -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

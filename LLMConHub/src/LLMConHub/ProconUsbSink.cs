@@ -126,6 +126,7 @@ public sealed class ProconUsbSink : IPadSink
             catch (Exception ex) { Error = ex.Message; Thread.Sleep(100); continue; }
             if (n <= 0) continue;
             Interlocked.Increment(ref _received);
+            Trace("in ", buf.AsSpan(0, n));
             replies.Clear();
             lock (_proto) _proto.HandleOutput(buf.AsSpan(0, n), Current(), replies);
             foreach (var r in replies) _replies.Enqueue(r);
@@ -173,8 +174,29 @@ public sealed class ProconUsbSink : IPadSink
         }
     }
 
+    // 診断の記録（環境変数 LLMCONHUB_USB_TRACE にファイルの場所を渡す）。受け取った報告と送った報告を、最初の 600 件だけ16進で書く。
+    // 2026-11-04、Steam が USB の Pro コントローラを初期化した直後に Game Bar が開いた件で、やりとりを調べるために足した。
+    private static readonly string? TracePath = Environment.GetEnvironmentVariable("LLMCONHUB_USB_TRACE");
+    private System.IO.StreamWriter? _trace;
+    private int _traceCount;
+    private void Trace(string dir, ReadOnlySpan<byte> data)
+    {
+        if (TracePath == null || _traceCount >= 600) return;
+        lock (_replies)
+        {
+            try
+            {
+                _trace ??= new System.IO.StreamWriter(TracePath, append: false) { AutoFlush = true };
+                _trace.WriteLine($"{PadFrame.NowMicros()} {dir} {Convert.ToHexString(data[..Math.Min(data.Length, 20)])}");
+                _traceCount++;
+            }
+            catch { /* 診断の失敗で動作を止めない */ }
+        }
+    }
+
     private bool Send(byte[] report)
     {
+        Trace("out", report);
         try
         {
             if (_ep!.Write(report, 100)) return true;

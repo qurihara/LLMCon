@@ -125,10 +125,21 @@ public sealed class WgiPadSource : IPadSource
         {
             var c = WgiPad.Find(p.Id);
             if (c != null && XInputClass.IsXInputDevice(c.HardwareVendorId, c.HardwareProductId)) continue;
+            if (c != null && IsNintendoSwitchPad(c.HardwareVendorId, c.HardwareProductId)) continue;
             result.Add(new PadInfo(p.Id, p.Name));
         }
         return result;
     }
+
+    /// <summary>
+    /// Switch の Pro コントローラと Joy-Con か。Windows.Gaming.Input の素の読み取りは、これらの報告（0x30）を
+    /// ボタンとして正しく読まず、押していないボタンが刻々と押された形で返る。それを物理のパッドとして読むと、
+    /// でたらめな入力が仮想コントローラに流れ、Steam のデスクトップの割り当てがキーや音量の操作に変える
+    /// （2026-11-04、ROG Ally で、LLMCon Hub の Pro コントローラを選んだ2秒後に音量が上がり、画面キーボードが開いた）。
+    /// そのため一覧から外す。これらは Steam から使うか、XInput に変える道具を通す。
+    /// </summary>
+    internal static bool IsNintendoSwitchPad(ushort vid, ushort pid)
+        => vid == 0x057E && (pid is 0x2006 or 0x2007 or 0x2009 or 0x200E);
 
     /// <summary>
     /// スロットに人が読める名前を付ける。Windows.Gaming.Input の側に XInput の機体が

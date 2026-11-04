@@ -10,6 +10,7 @@
 #                    dual は、LLMCon を2つ同時に動かす。1P は USB の Pro コントローラ（MCP は PORT 番）で1つ目の物理のパッドを、
 #                    2P は Bluetooth の Pro コントローラ（MCP は PORT2 番）で2つ目の物理のパッドを読む
 #   PORT2=8778       dual のときの 2P の MCP サーバの番号
+#   PAD=auto         1台の形（usb、bt）のときに読む物理のパッド。auto:2 で2つ目、event3 のように番号でも書ける
 #   PAD1=auto:1      dual のときに 1P（USB）が読む物理のパッド。auto:N は見つかった順の N 番目、event3 のように番号でも書ける
 #   PAD2=auto:2      dual のときに 2P（Bluetooth）が読む物理のパッド。PAD1=auto:2、PAD2=auto:1 と書けば入れ替わる
 #   RECONNECT=       Bluetooth で前につないだ相手へ、Pi の側からつなぎ直す。アドレスか auto（nxbt が覚えている Switch）。空なら新しいペアリングを待つ
@@ -43,7 +44,7 @@ if [ -z "${BIND:-}" ]; then
   [ -n "$BIND" ] || BIND=127.0.0.1
 fi
 
-HOST=(./llmconhub-host --bind "$BIND" --port "$PORT" --pad evdev --status)
+HOST=(./llmconhub-host --bind "$BIND" --port "$PORT" --pad "evdev=${PAD:-auto}" --status)
 
 if [ "$MODE" = "dual" ]; then
   pi/procon_gadget.sh up

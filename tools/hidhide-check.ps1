@@ -18,7 +18,7 @@ $ErrorActionPreference = "Continue"
 $cli = "C:\Program Files\Nefarius Software Solutions\HidHide\x64\HidHideCLI.exe"
 if (-not (Test-Path $cli)) { Write-Output "HidHide が入っていません: $cli"; exit 1 }
 
-$probe = Join-Path $PSScriptRoot "wgiprobe\bin\Release\net8.0-windows10.0.19041.0\wgiprobe.exe"
+$probe = Join-Path $PSScriptRoot "wgiprobe\bin\Release\net10.0-windows10.0.19041.0\wgiprobe.exe"
 if (-not (Test-Path $probe)) { Write-Output "先に dotnet build tools/wgiprobe -c Release を実行してください"; exit 1 }
 
 function Count-Pads {
