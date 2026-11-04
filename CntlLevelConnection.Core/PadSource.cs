@@ -62,6 +62,18 @@ public interface IPadSource
     void UsePadProfiles(IReadOnlyList<PadProfile>? profiles) { }
 
     /// <summary>
+    /// いま選んでいるパッドに、機体ごとの割り当て（pad_setup で決めたものなど）を当てる。
+    /// save が真で、扱える環境なら、プロファイルのファイルにも書き残す。結果の説明を返す。
+    /// 既定では軸とボタンの割り当てだけを差し替える（asJoystick は Linux の LLMCon Hub だけが扱う）。
+    /// </summary>
+    string ApplyPadProfile(PadProfile profile, bool save)
+    {
+        if (profile.Axes != null) SetAxisMap(profile.Axes);
+        if (!string.IsNullOrEmpty(profile.Buttons)) SetButtonMap(PadButtonMap.FromSpec(profile.Buttons, out _));
+        return save ? "割り当てを当てました（この環境ではファイルに保存できません。get_pad_profile の結果をプロファイルに貼ってください）。" : "割り当てを当てました。";
+    }
+
+    /// <summary>
     /// いま選んでいるパッドの割り当てを、プロファイルへ貼り付けられる JSON の断片にする。
     /// 実測で決めた割り当てを次の起動でも使えるようにするために出す。選んでいなければ null。
     /// </summary>

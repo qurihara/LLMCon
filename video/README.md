@@ -215,7 +215,7 @@ TetWISS 2026 では、登壇発表ごとにテトリスを1つずつ割り当て
 
 ## LLMCon Hub（Raspberry Pi で LLMCon を動かし、ふつうのコントローラとしてゲーム機や PC につなぐ）
 
-![LLMCon Hub の接続の全体像](llmconhub_overview.png)
+![LLMCon Hub の接続の全体像](llmconhub_overview_v2.png)
 
 LLMCon Hub は、LLMCon を小さなコンピュータ（Raspberry Pi 4）の上で動かし、Raspberry Pi そのものを Nintendo Switch の Pro コントローラとして、ゲーム機や PC につなぐためのものである（2026年11月に作成）。
 論文には含まれていない、LLMCon の本体を広げるサブプロジェクトである。
@@ -227,11 +227,26 @@ LLMCon Hub は、LLMCon を物理のゲームパッドとゲーム機のあい�
 大規模言語モデルは、別の機械から MCP で規則を伝える。Tailscale を通せば、離れた場所からでも届く。
 ゲームの側からは、ふつうの Pro コントローラに見える。ゲームにも、ゲーム機や PC にも、手を加えない。
 
-2026年11月2日の時点で、次のことを確かめた。
+2026年11月4日までに、次のことを確かめた。
 
-- Bluetooth で Windows の PC（ROG Ally）につなぎ、Steam が「Nintendo Switch Pro Controller」として認識した。
-- Steam から起動したストリートファイター6 で、MCP から送ったボタンと十字キーが効いた。
-- Raspberry Pi の中で、LLMCon の状態を Bluetooth の部品に渡すまでの時間は、60回の試行で中央値約1ミリ秒であった。
+- Nintendo Switch 2 と Windows の PC（Steam）の両方に、USB と Bluetooth のどちらでもつながり、MCP から送った入力と、Raspberry Pi につないだ物理のゲームパッドの入力が届いた。
+- 遅延はごくわずかである。Raspberry Pi の中に仮想のゲームパッドを作って100回押して測ると、パッドの入力から USB の報告を書き終えるまで中央値0.73ミリ秒、Bluetooth の送り手へ渡し終えるまで中央値1.42ミリ秒であった。
+- 手元のコントローラは、挿すだけで使える。ボタンの割り当ては、SDL のコントローラの対応表（約750機種）から自動で決まる。対応表に無い機種も、大規模言語モデルがプレイヤに「上の段のいちばん左を押してください」のようにボタンの位置で頼んで決める。天板に印字の無いアーケードコントローラでも決められる。
 
-Nintendo Switch との接続、USB ケーブルでの接続、物理のゲームパッドの経路は、これから確かめる。上の図は、これらがすべて動いたときの姿である。
-実装は、このリポジトリに追って加える。
+### 1台の Hub で2人の対戦
+
+![1台の Hub で2人の対戦](llmconhub_dual.png)
+
+1台の Raspberry Pi の中で LLMCon を2つ動かし、1P を USB の Pro コントローラ、2P を Bluetooth の Pro コントローラとして、同じゲーム機や PC につなげる。
+USB-A の口に挿した2つのコントローラが、それぞれ 1P と 2P になる。大規模言語モデルは、1P と 2P の LLMCon に別々の規則を与えられる。
+PC に LLMCon を入れずに、格闘ゲームのハンディキャップの対戦を Hub 1台で受け持てる。ストリートファイター6 で、アーケードコントローラとスーパーファミコン型のパッドを使い、2人がそれぞれのキャラクターを操作できた。
+
+### インストール
+
+Raspberry Pi OS Lite（64-bit）の上で次の1行を実行し、終わったら再起動する。あとは電源を入れるだけで立ち上がる。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/qurihara/LLMCon/main/LLMConHub/install.sh | sudo bash
+```
+
+実装と詳しい使い方は [LLMConHub/](../LLMConHub/) にある。

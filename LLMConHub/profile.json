@@ -4,7 +4,17 @@
       "label": "BUFFALO BGC-FC801（スーパーファミコン型。十字キーを2本の軸で報告する。位置で Switch に合わせる）",
       "vid": 1041,
       "pid": 198,
-      "axes": { "lx": -1, "ly": -1, "rx": -1, "ry": -1, "lt": -1, "rt": -1, "invertY": true, "dpadX": 0, "dpadY": 1 },
+      "axes": {
+        "lx": -1,
+        "ly": -1,
+        "rx": -1,
+        "ry": -1,
+        "lt": -1,
+        "rt": -1,
+        "invertY": true,
+        "dpadX": 0,
+        "dpadY": 1
+      },
       "buttons": "0=B,1=A,2=Y,3=X,4=LB,5=RB,6=Back,7=Start"
     }
   ]

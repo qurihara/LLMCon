@@ -202,6 +202,7 @@ public sealed class LlmConOptions
                                 A("dpadX", d.DpadX), A("dpadY", d.DpadY));
                         }
                         if (e.TryGetProperty("buttons", out var eb)) pf.Buttons = eb.GetString();
+                        if (e.TryGetProperty("asJoystick", out var ej)) pf.AsJoystick = ej.ValueKind == JsonValueKind.True;
                         list.Add(pf);
                     }
                     if (list.Count > 0) o.Pads = list;

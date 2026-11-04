@@ -296,6 +296,95 @@ public class EvdevDecoderTests
     }
 
     [Fact]
+    public void ForceJoystick_ReadsGamepadCodesInOrder_WithPs4Layout()
+    {
+        // GP2040-CE（PS4 の形）を hid-generic で読むと、ボタンは BTN_SOUTH から14個、軸は X、Y、Z、RX、RY、RZ になる
+        var keys = Enumerable.Range(EvCodes.BTN_SOUTH, 14).ToList();
+        var abs = new List<int> { EvCodes.ABS_X, EvCodes.ABS_Y, EvCodes.ABS_Z, EvCodes.ABS_RX, EvCodes.ABS_RY, EvCodes.ABS_RZ };
+        var d = new EvdevDecoder(new EvdevCaps(keys, abs))
+        {
+            AxisMap = new PadAxisMap(LX: 0, LY: 1, RX: 2, RY: 5, LT: 3, RT: 4),
+            ForceJoystick = true,
+        };
+        foreach (var a in new[] { EvCodes.ABS_X, EvCodes.ABS_Y, EvCodes.ABS_Z, EvCodes.ABS_RZ }) d.SetAbsInfo(a, new AbsRange(0, 255), 128);
+        d.SetAbsInfo(EvCodes.ABS_RX, new AbsRange(0, 255), 0);
+        d.SetAbsInfo(EvCodes.ABS_RY, new AbsRange(0, 255), 0);
+        d.Feed(EvCodes.EV_KEY, EvCodes.BTN_SOUTH + 1, 1);   // 2番目のボタン（PS4 の ×、下）は A
+        d.Feed(EvCodes.EV_SYN, EvCodes.SYN_REPORT, 0);
+        Assert.Equal(ControllerEngine.MaskOf("A"), d.Current.Buttons);
+        Assert.InRange(d.Current.RX, (short)-200, (short)200);   // 右スティックは中央
+        Assert.InRange(d.Current.RY, (short)-200, (short)200);
+        Assert.Equal(0, d.Current.LT);                            // トリガーは離した状態
+        Assert.Equal(0, d.Current.RT);
+    }
+
+    [Fact]
+    public void Sdl_RazerPantheraPs4_MapsPositionally()
+    {
+        // SDL_GameControllerDB の Linux の行。GP2040-CE の PS4 の形がこの番号で名乗る
+        const string line = "03000000321500000104000011010000,Razer Panthera PS4,a:b1,b:b2,back:b8,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b12,leftshoulder:b4,leftstick:b10,lefttrigger:a3,leftx:a0,lefty:a1,rightshoulder:b5,rightstick:b11,righttrigger:a4,rightx:a2,righty:a5,start:b9,touchpad:b13,x:b0,y:b3,platform:Linux,";
+        var db = SdlGameControllerDb.Parse(new[] { line });
+        Assert.Equal(1, db.Count);
+        var m = db.Find(0x03, 0x1532, 0x0401, 0x0111);
+        Assert.NotNull(m);
+        Assert.Equal("03000000321500000104000011010000", SdlMapping.MakeGuid(0x03, 0x1532, 0x0401, 0x0111));
+
+        var keys = Enumerable.Range(EvCodes.BTN_SOUTH, 14).ToList();
+        var abs = new List<int> { EvCodes.ABS_X, EvCodes.ABS_Y, EvCodes.ABS_Z, EvCodes.ABS_RX, EvCodes.ABS_RY, EvCodes.ABS_RZ, EvCodes.ABS_HAT0X, EvCodes.ABS_HAT0Y };
+        var d = new EvdevDecoder(new EvdevCaps(keys, abs)) { Sdl = m };
+        foreach (var a in new[] { EvCodes.ABS_X, EvCodes.ABS_Y, EvCodes.ABS_Z, EvCodes.ABS_RZ }) d.SetAbsInfo(a, new AbsRange(0, 255), 128);
+        d.SetAbsInfo(EvCodes.ABS_RX, new AbsRange(0, 255), 0);
+        d.SetAbsInfo(EvCodes.ABS_RY, new AbsRange(0, 255), 0);
+        d.SetAbsInfo(EvCodes.ABS_HAT0X, new AbsRange(-1, 1), 0);
+        d.SetAbsInfo(EvCodes.ABS_HAT0Y, new AbsRange(-1, 1), 0);
+        d.CommitInitial();
+        d.Feed(EvCodes.EV_KEY, EvCodes.BTN_SOUTH + 1, 1);     // b1 は SDL の a（下）なので LLMCon の A
+        d.Feed(EvCodes.EV_ABS, EvCodes.ABS_HAT0Y, -1);         // ハットの上
+        d.Feed(EvCodes.EV_ABS, EvCodes.ABS_RY, 255);           // a4 は右のトリガー
+        d.Feed(EvCodes.EV_SYN, EvCodes.SYN_REPORT, 0);
+        Assert.Equal((ushort)(ControllerEngine.MaskOf("A") | ControllerEngine.MaskOf("DUp")), d.Current.Buttons);
+        Assert.Equal(255, d.Current.RT);
+        Assert.Equal(0, d.Current.LT);
+        Assert.InRange(d.Current.RX, (short)-200, (short)200);
+        Assert.InRange(d.Current.RY, (short)-200, (short)200);
+    }
+
+    [Fact]
+    public void PadSetup_Arcade_RecordsButtonsAxesAndSkips()
+    {
+        var setup = PadSetup.Create("arcade")!;
+        // 偽の読み取り：手順ごとに「何を押すか」を決め、最初の2回は離した状態、そのあと押した状態、そのあと離した状態を返す
+        int step = -1, calls = 0;
+        PadRawReading Rest() => new("x", "test", 8, 1, 2, new[] { 0.5, 0.5 }, new bool[8], "hat0x=0 hat0y=0 pressed=[]", 1);
+        PadRawReading Read()
+        {
+            if (setup.Position != step) { step = setup.Position; calls = 0; }
+            calls++;
+            if (calls <= 2 || calls > 6) return Rest();
+            var b = new bool[8]; var ax = new[] { 0.5, 0.5 };
+            switch (setup.Current?.Target)
+            {
+                case "DUp": ax[1] = 0.0; break;          // 十字キーが軸で報告される機体
+                case "DLeft": ax[0] = 0.0; break;
+                case "X": b[3] = true; break;
+                case "A": b[1] = true; break;
+                case "Start": b[7] = true; break;
+                default: return Rest();                // ほかは押さない（飛ばす）
+            }
+            return new("x", "test", 8, 1, 2, ax, b, "hat0x=0 hat0y=0 pressed=[]", 2);
+        }
+        while (!setup.Done) setup.WaitAndCapture(Read, setup.Current!.Target is "DUp" or "DLeft" or "X" or "A" or "Start" ? 2000 : 60);
+        var prof = setup.BuildProfile(new PadHardware(0x1234, 0x5678, "test"), out _);
+        Assert.True(prof.AsJoystick);
+        Assert.Equal(1, prof.Axes!.DpadY);
+        Assert.Equal(0, prof.Axes.DpadX);
+        Assert.Contains("3=X", prof.Buttons);
+        Assert.Contains("1=A", prof.Buttons);
+        Assert.Contains("7=Start", prof.Buttons);
+        Assert.Equal("skip", setup.Results.First(r => r.Target == "Y").Kind);
+    }
+
+    [Fact]
     public void RawButtonIndex_CoversJoystickAndHappyRanges()
     {
         Assert.Equal(0, EvdevDecoder.RawButtonIndex(EvCodes.BTN_JOYSTICK));

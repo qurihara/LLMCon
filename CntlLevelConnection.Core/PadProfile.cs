@@ -35,6 +35,14 @@ public sealed class PadProfile
     /// <summary>ボタンの割り当ての指定（"10=DUp,11=DRight" の形）。null ならそのままにする。</summary>
     public string? Buttons { get; set; }
 
+    /// <summary>
+    /// Linux（LLMCon Hub）で、位置で名前の決まったゲームパッドとして報告される機体を、番号だけのボタンの機体として読む。
+    /// 格闘ゲーム用のスティック（GP2040-CE の PS4 の形など）は、標準の読み取り（hid-generic）でボタンに BTN_SOUTH から
+    /// の名前が付くが、実際の並びは PS4 の並び（□、×、○、△…）なので、名前と位置が合わない。真にすると、ボタンを
+    /// 並びの順の番号で読み、既定の割り当て（PS4 の並び）と軸の割り当て（Axes）を当てる。Windows では使わない。
+    /// </summary>
+    public bool AsJoystick { get; set; }
+
     /// <summary>この設定が、その素性の機体に当てはまるか。</summary>
     public bool Matches(ushort vid, ushort pid, string name)
     {

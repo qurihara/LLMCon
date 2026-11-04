@@ -38,7 +38,7 @@ LLMCon Hub は、LLMCon を Raspberry Pi の上で動かし、Raspberry Pi そ�
   - Bluetooth の経路：パッドの入力の事象から、Bluetooth の送り手（nxbt）へ渡し終えるまで、中央値 1.42 ミリ秒、95パーセンタイル 2.00 ミリ秒（200の変化のすべて）。
   - このあとの、USB の読み取りの間隔や Bluetooth の無線の区間で増える時間は、まだ測っていない。
 - 初代の Nintendo Switch は扱わない（2026-11-03 に決めた）。
-- 1台の Raspberry Pi 4 で LLMCon を2つ同時に動かし（`MODE=dual`）、USB の Pro コントローラ（1P、MCP は 8777番）と Bluetooth の Pro コントローラ（2P、MCP は 8778番）を同じ PC につないだ。Steam は2台の Nintendo Switch Pro Controller として認識し、テストの画面で、1P に送った入力は USB のほうだけに、2P に送った入力は Bluetooth のほうだけに出た。
+- 1台の Raspberry Pi 4 で LLMCon を2つ同時に動かし（`MODE=dual`）、USB の Pro コントローラ（1P、MCP は 8777番）と Bluetooth の Pro コントローラ（2P、MCP は 8778番）を同じ PC につないだ。Steam は2台の Nintendo Switch Pro Controller として認識し、テストの画面で、1P に送った入力は USB のほうだけに、2P に送った入力は Bluetooth のほうだけに出た。さらに、物理のパッドを2つ（スーパーファミコン型のパッドと、GP2040-CE のアーケードコントローラ）つなぎ、Steam から起動したストリートファイター6 で、2人がそれぞれのキャラクターを操作できた（2026-11-04、栗原さんが確かめた）。
 
 ## フォルダ
 
@@ -67,7 +67,12 @@ sudo reboot
 
 - 相手（Switch や PC）と USB-C でつながっていれば USB の Pro コントローラとして、つながっていなければ（AC アダプタで給電しているときなど）Bluetooth の Pro コントローラとして動く。
 - Switch では、USB のときは「設定」→「コントローラーとセンサー」の「Proコントローラーの有線通信」をオンにする。Bluetooth のときは「持ちかた/順番を変える」の画面を開く。PC では「Bluetooth デバイスの追加」から「Pro Controller」を追加する。Steam から起動したゲームで使う。
-- 物理のゲームパッドは USB-A の口につなぐ。機体ごとの割り当ては `~/llmconhub/profile.json` に書く。起動のあとで挿したパッドも拾う。
+- 物理のゲームパッドは USB-A の口につなぐ。起動のあとで挿したパッドも拾う。ボタンと軸の割り当ては、次の順に決まる。
+  1. `~/llmconhub/profile.json` に、その機体（VID と PID）の項目があれば、それを使う。
+  2. 無ければ、SDL のコントローラの対応表（`gamecontrollerdb.txt`、SDL_GameControllerDB、Linux の約750機種）を引く。手元のコントローラの多くは、挿すだけで正しく読める。
+  3. どちらにも無ければ、MCP の道具 `pad_setup_start`、`pad_setup_next`、`pad_setup_finish` で決める。大規模言語モデルがプレイヤに「上の段のいちばん左を押してください」のように、ボタンの位置で順に頼み、押された番号から割り当てを決めて `profile.json` に保存する。天板に A や B の印字の無いアーケードコントローラでも決められる。
+  - MCP の `get_pad_raw` は、いまの割り当てがどこから来たか（プロファイル、SDL の対応表、既定）を表示する。
+  - 攻撃のボタンの好みは、ゲームの側の設定で変えればよい。LLMCon の名前（A、Start など）は位置で決まるので、改変の規則や大規模言語モデルの自動操作は、どのコントローラでも同じ名前で働く。
 - MCP サーバは `http://<Raspberry Pi の番地>:8777/` で待ち受ける。既定では Tailscale の番地にだけ開く（Tailscale が無ければ 127.0.0.1）。離れた機械の大規模言語モデルから使うときは、Raspberry Pi に Tailscale を入れる。
 - 形を決め打ちしたいとき、Bluetooth で前の相手へ Raspberry Pi の側からつなぎ直したいときは、`/etc/llmconhub.conf` に `MODE=bt`、`RECONNECT=AA:BB:CC:DD:EE:FF` のように書く。書ける項目は `pi/autostart.sh` の先頭にある。
 - 1台で 1P と 2P の2つのコントローラを出すときは、`/etc/llmconhub.conf` に `MODE=dual` と書く。1P は USB の Pro コントローラ（MCP は 8777番、1つ目の物理のパッド）、2P は Bluetooth の Pro コントローラ（MCP は 8778番、2つ目の物理のパッド）になる。格闘ゲームのハンディキャップの対戦を、1台の Hub だけで受け持てる。
@@ -86,6 +91,8 @@ sudo reboot
 - 安いパッドには、最初にボタンが押されるまで何も報告しないものがある。そのあいだ、スティックと十字キーの軸は中央として扱う。
 - Windows の標準の仕組み（汎用の HID の読み方）は、USB の Pro コントローラの報告をボタンとして読まない。本物の Pro コントローラでも同じである。Steam は自分で読み直すので、Steam を通せば効く。
 - Steam のテストの画面は、Switch の B の長押しと＋で閉じる。確かめるときは、この2つを押さない。
+- 格闘ゲーム用のスティック（GP2040-CE の PS4 の形など）は、Linux の標準の読み取りでボタンの名前と位置が合わない。GP2040-CE の PS4 の形は SDL の対応表（Razer Panthera PS4）で正しく読める。対応表に無い機体は、`pad_setup` で決めるか、`profile.json` に `"asJoystick": true` と軸の割り当てを書く。
+- ストリートファイター6 は、タイトル画面で最初にボタンを押したコントローラを1P にする。ほかのコントローラ（PC につないだアケコンなど）を使っていたときは、それを外してからタイトル画面で押す。
 - nxbt は、Switch との接続が2回切れると、その Switch のペアリングの情報を BlueZ から消す（nxbt/controller/server.py）。消えたあとは、Raspberry Pi の側からつなぎ直せないので、「持ちかた/順番を変える」の画面でペアリングし直す。
 - Switch 2 の USB の口からの電気だけでも Raspberry Pi 4 は動いたが、電圧の低下の記録が出続けた。長く使うなら、電源とデータを分ける部品を使う。
 - Steam（SDL の Switch 用の処理）は、スティックの届く範囲を、最初は較正の値の 70% と仮定し、それを超える値が届くたびに広げる。そのため、まだ端まで倒していない向きに半分倒すと、約 0.71 と表示される。どの向きにも一度ずつ端まで倒せば、比例する値になる。Switch 本体では端まで届くように、LLMCon Hub は較正の値いっぱいの範囲を送る。
@@ -102,4 +109,5 @@ sudo reboot
 
 - [nxbt](https://github.com/Brikwerk/nxbt)（MIT）：Bluetooth の Pro コントローラの模倣に使う。`setup_pi.sh` が Raspberry Pi の上で取得して入れる。このリポジトリには含めない。
 - USB の有線の Pro コントローラの手順は、[dekuNukem の解析資料](https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering) と、本物の Pro コントローラと Switch のあいだのやり取りの記録を読んで書き起こした。資料のコードは写していない。
+- [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB)（zlib License）：`gamecontrollerdb.txt` を手を加えずに同梱する。ライセンスの表示は `third_party/SDL_GameControllerDB_LICENSE.txt` にある。
 - BlueZ、Raspberry Pi OS、.NET の実行環境は、それぞれの許諾に従う。.NET の実行環境は組み立てのときに同梱する。

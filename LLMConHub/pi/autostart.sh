@@ -10,6 +10,8 @@
 #                    dual は、LLMCon を2つ同時に動かす。1P は USB の Pro コントローラ（MCP は PORT 番）で1つ目の物理のパッドを、
 #                    2P は Bluetooth の Pro コントローラ（MCP は PORT2 番）で2つ目の物理のパッドを読む
 #   PORT2=8778       dual のときの 2P の MCP サーバの番号
+#   PAD1=auto:1      dual のときに 1P（USB）が読む物理のパッド。auto:N は見つかった順の N 番目、event3 のように番号でも書ける
+#   PAD2=auto:2      dual のときに 2P（Bluetooth）が読む物理のパッド。PAD1=auto:2、PAD2=auto:1 と書けば入れ替わる
 #   RECONNECT=       Bluetooth で前につないだ相手へ、Pi の側からつなぎ直す。アドレスか auto（nxbt が覚えている Switch）。空なら新しいペアリングを待つ
 #   PORT=8777        MCP サーバの番号
 #   BIND=            MCP サーバを開く番地。空なら Tailscale の番地（無ければ 127.0.0.1）
@@ -27,6 +29,8 @@ RECONNECT=${RECONNECT:-}
 PORT=${PORT:-8777}
 USB_WAIT=${USB_WAIT:-15}
 PORT2=${PORT2:-8778}
+PAD1=${PAD1:-auto:1}
+PAD2=${PAD2:-auto:2}
 VENV=${VENV:-/opt/llmconhub/venv}
 
 if [ -z "${BIND:-}" ]; then
@@ -46,9 +50,9 @@ if [ "$MODE" = "dual" ]; then
   echo "LLMCon Hub：2つ動かします。1P は USB の Pro コントローラ（MCP は http://$BIND:$PORT/ ）、2P は Bluetooth の Pro コントローラ（MCP は http://$BIND:$PORT2/ 、つなぎ直す相手：${RECONNECT:-なし}）。"
   "$VENV/bin/python" bridge/llmconhub_bridge.py --backend nxbt ${RECONNECT:+--reconnect "$RECONNECT"} --log /var/tmp/llmconhub-latency.csv &
   BRIDGE=$!
-  ./llmconhub-host --bind "$BIND" --port "$PORT" --name 1P --pad evdev=auto:1 --status --sink procon-usb &
+  ./llmconhub-host --bind "$BIND" --port "$PORT" --name 1P --pad "evdev=$PAD1" --status --sink procon-usb &
   HOST1=$!
-  ./llmconhub-host --bind "$BIND" --port "$PORT2" --name 2P --pad evdev=auto:2 --status --sink udp=127.0.0.1:9100 &
+  ./llmconhub-host --bind "$BIND" --port "$PORT2" --name 2P --pad "evdev=$PAD2" --status --sink udp=127.0.0.1:9100 &
   HOST2=$!
   trap 'kill "$BRIDGE" "$HOST1" "$HOST2" 2>/dev/null || true' EXIT
   # どれか1つが止まったら、全体を止めて systemd に起動し直させる

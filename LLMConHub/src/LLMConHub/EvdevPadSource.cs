@@ -43,6 +43,13 @@ public sealed class EvdevPadSource : IPadSource, IInputTimestamp, IDisposable
     private PadAxisMap _axisMap = PadAxisMap.Default;
     private PadButtonMap _buttonMap = PadButtonMap.Default;
     private IReadOnlyList<PadProfile>? _profiles;
+    private SdlGameControllerDb? _sdlDb;
+
+    /// <summary>SDL の対応表を受け取る。プロファイルに当てはまるものが無い機体に、パッドを開くたびに当てる。</summary>
+    public void UseSdlDb(SdlGameControllerDb? db) => _sdlDb = db;
+
+    /// <summary>いま選んでいるパッドに当てている割り当ての出どころ（人が読むため）。</summary>
+    public string MappingSource { get; private set; } = "既定";
     private (ushort, ushort)? _lastHw;
 
     // 「最初に見つかったパッド」を選んでいるとき（auto）は、パッドが無い、または外れたら、
@@ -114,11 +121,11 @@ public sealed class EvdevPadSource : IPadSource, IInputTimestamp, IDisposable
         return new PadHardware(hw.Vendor, hw.Product, _selectedName);
     }
 
-    private (ushort Vendor, ushort Product, string Name) ReadHardware(string id)
+    private (ushort Vendor, ushort Product, string Name, ushort Bus, ushort Version) ReadHardware(string id)
     {
         var dir = Path.Combine(_sysRoot, id, "device", "id");
         ushort Hex(string n) => ushort.TryParse(ReadText(Path.Combine(dir, n)), System.Globalization.NumberStyles.HexNumber, null, out var v) ? v : (ushort)0;
-        return (Hex("vendor"), Hex("product"), ReadText(Path.Combine(_sysRoot, id, "device", "name")) ?? id);
+        return (Hex("vendor"), Hex("product"), ReadText(Path.Combine(_sysRoot, id, "device", "name")) ?? id, Hex("bustype"), Hex("version"));
     }
 
     // ── 選択と読み取り ──
@@ -140,6 +147,61 @@ public sealed class EvdevPadSource : IPadSource, IInputTimestamp, IDisposable
 
     /// <summary>番号の若い順に並べたパッドのうち、n 番目（1から数える）の識別子。無ければ null。</summary>
     private string? NthPad(int n) => List().Skip(n - 1).FirstOrDefault()?.Id;
+
+    /// <summary>pad_setup で決めた割り当てを書き残すプロファイルのファイル（実行ファイルの隣の profile.json）。null なら書かない。</summary>
+    public string? ProfilePath { get; set; }
+
+    /// <summary>
+    /// いま選んでいるパッドに、機体ごとの割り当てを当てる。同じ VID と PID の項目を差し替えて、パッドを開き直す。
+    /// save が真なら、プロファイルのファイルの同じ機体の項目も差し替える。
+    /// </summary>
+    public string ApplyPadProfile(PadProfile profile, bool save)
+    {
+        var list = (_profiles ?? Array.Empty<PadProfile>()).Where(x => !(x.Vid == profile.Vid && x.Pid == profile.Pid)).ToList();
+        list.Insert(0, profile);
+        _profiles = list;
+        var id = _selectedId;
+        Close();
+        if (id != null) Open(id);
+        if (!save) return "割り当てを当てました（ファイルには保存していません）。";
+        if (ProfilePath == null) return "割り当てを当てました（保存先のプロファイルが分からないので、保存していません）。";
+        try { SaveProfileEntry(ProfilePath, profile); return $"割り当てを当て、{ProfilePath} に保存しました。"; }
+        catch (Exception ex) { return $"割り当てを当てましたが、保存に失敗しました：{ex.Message}"; }
+    }
+
+    private static void SaveProfileEntry(string path, PadProfile p)
+    {
+        var root = File.Exists(path)
+            ? (System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path)) as System.Text.Json.Nodes.JsonObject ?? new())
+            : new System.Text.Json.Nodes.JsonObject();
+        var pads = root["pads"] as System.Text.Json.Nodes.JsonArray ?? new System.Text.Json.Nodes.JsonArray();
+        root["pads"] = pads;
+        for (int i = pads.Count - 1; i >= 0; i--)
+        {
+            var e = pads[i];
+            if (e?["vid"]?.GetValue<int>() == p.Vid && e?["pid"]?.GetValue<int>() == p.Pid) pads.RemoveAt(i);
+        }
+        var ax = p.Axes ?? PadAxisMap.Default;
+        pads.Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["label"] = p.Label,
+            ["vid"] = p.Vid,
+            ["pid"] = p.Pid,
+            ["asJoystick"] = p.AsJoystick,
+            ["axes"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["lx"] = ax.LX, ["ly"] = ax.LY, ["rx"] = ax.RX, ["ry"] = ax.RY, ["lt"] = ax.LT, ["rt"] = ax.RT,
+                ["invertY"] = ax.InvertY, ["dpadX"] = ax.DpadX, ["dpadY"] = ax.DpadY,
+            },
+            ["buttons"] = p.Buttons,
+        });
+        var opt = new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
+        File.WriteAllText(path, root.ToJsonString(opt) + "\n");
+    }
 
     /// <summary>プロファイルの機体ごとの割り当てを受け取る。パッドを開くたびに、VID と PID が合うものを当てる。</summary>
     public void UsePadProfiles(IReadOnlyList<PadProfile>? profiles) => _profiles = profiles;
@@ -204,7 +266,10 @@ public sealed class EvdevPadSource : IPadSource, IInputTimestamp, IDisposable
         if (prof?.Axes != null) _axisMap = prof.Axes;
         if (!string.IsNullOrEmpty(prof?.Buttons)) _buttonMap = PadButtonMap.FromSpec(prof!.Buttons, out _);
 
-        var dec = new EvdevDecoder(caps) { AxisMap = _axisMap, ButtonMap = _buttonMap };
+        // プロファイルに無い機体は、SDL の対応表を引く（プロファイルが先、SDL の対応表が次、既定が最後）
+        var sdl = prof == null ? _sdlDb?.Find(hw.Bus, hw.Vendor, hw.Product, hw.Version) : null;
+        MappingSource = prof != null ? $"プロファイル（{prof.Label ?? "名前なし"}）" : sdl != null ? $"SDL の対応表（{sdl.Name}）" : "既定";
+        var dec = new EvdevDecoder(caps) { AxisMap = _axisMap, ButtonMap = _buttonMap, ForceJoystick = prof?.AsJoystick ?? false, Sdl = sdl };
         ReadInitialState(fd, dec);
 
         lock (_lock)
@@ -353,7 +418,7 @@ public sealed class EvdevPadSource : IPadSource, IInputTimestamp, IDisposable
         lock (_lock)
         {
             if (_decoder == null || (id != null && id != _selectedId)) return null;
-            return _decoder.Raw(_selectedId!, _selectedName, _lastEventMicros);
+            return _decoder.Raw(_selectedId!, $"{_selectedName} ［割り当て：{MappingSource}］", _lastEventMicros);
         }
     }
 

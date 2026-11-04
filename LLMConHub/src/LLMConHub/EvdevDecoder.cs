@@ -93,6 +93,7 @@ public sealed class EvdevDecoder
     private readonly bool[] _key = new bool[EvCodes.KEY_CNT];
     private readonly int[] _axisOrder;     // ジョイスティックの軸の並び（ハットを除く ABS の番号の昇順）
     private readonly int[] _keyOrder;      // 生のボタンの並び（ReadRaw で見せる順）
+    private readonly int[] _sdlKeyOrder;   // SDL の Linux の数え方のボタンの並び（BTN_JOYSTICK 以上を昇順、そのあとそれより小さいものを昇順）
 
     /// <summary>確定した状態。</summary>
     public PadState Current { get; private set; }
@@ -124,12 +125,24 @@ public sealed class EvdevDecoder
     /// </summary>
     public Dictionary<int, string> GamepadOverrides { get; } = new();
 
+    /// <summary>
+    /// 位置で名前の決まったゲームパッドとして報告される機体を、番号だけのボタンの機体として読む（プロファイルの asJoystick）。
+    /// ボタンの番号は、機体が持つボタンの並びの順（_keyOrder の位置）にする。軸は AxisMap で割り当てる。
+    /// </summary>
+    public bool ForceJoystick { get => _forceJoystick; set { _forceJoystick = value; if (HasData) Current = Compute(); } }
+
+    /// <summary>SDL の対応表の割り当て。null でなければ、ほかの割り当て（ゲームパッドの名前、AxisMap、ButtonMap）より優先して使う。</summary>
+    public SdlMapping? Sdl { get => _sdl; set { _sdl = value; if (HasData) Current = Compute(); } }
+    private SdlMapping? _sdl;
+    private bool _forceJoystick;
+
     public EvdevDecoder(EvdevCaps caps)
     {
         _caps = caps;
         for (int i = 0; i < _range.Length; i++) _range[i] = AbsRange.Unknown;
         _axisOrder = caps.Abs.Where(a => a < EvCodes.ABS_HAT0X || a > 0x17).Where(a => a < EvCodes.ABS_CNT).ToArray();
         _keyOrder = caps.Keys.Where(k => k < EvCodes.KEY_CNT).ToArray();
+        _sdlKeyOrder = _keyOrder.Where(k => k >= EvCodes.BTN_JOYSTICK).Concat(_keyOrder.Where(k => k < EvCodes.BTN_JOYSTICK)).ToArray();
     }
 
     public EvdevCaps Caps => _caps;
@@ -197,7 +210,8 @@ public sealed class EvdevDecoder
     private PadState Compute()
     {
         var s = new PadState();
-        if (_caps.IsGamepad) ComputeGamepad(ref s);
+        if (_sdl != null) { ComputeSdl(ref s, _sdl); return s; }
+        if (_caps.IsGamepad && !_forceJoystick) ComputeGamepad(ref s);
         else ComputeJoystick(ref s);
 
         // ハット（十字キーを軸で報告する機体）は、どちらの種類でも十字キーにする
@@ -251,7 +265,7 @@ public sealed class EvdevDecoder
         foreach (var code in _keyOrder)
         {
             if (!_key[code]) continue;
-            int idx = RawButtonIndex(code);
+            int idx = _forceJoystick ? Array.IndexOf(_keyOrder, code) : RawButtonIndex(code);
             if (idx < 0) continue;
             var name = ButtonMap.TargetOf(idx);
             if (name != null) ApplyButton(ref s, name);
@@ -283,6 +297,81 @@ public sealed class EvdevDecoder
             if (u < 0.25) s.Buttons |= Bit("DUp");
             if (u > 0.75) s.Buttons |= Bit("DDown");
         }
+    }
+
+    // ── SDL の対応表による変換 ──
+
+    private void ComputeSdl(ref PadState s, SdlMapping m)
+    {
+        foreach (var (target, src) in m.Targets)
+        {
+            switch (target)
+            {
+                case "LX": s.LX = SdlStick(src, false); break;
+                case "LY": s.LY = SdlStick(src, true); break;
+                case "RX": s.RX = SdlStick(src, false); break;
+                case "RY": s.RY = SdlStick(src, true); break;
+                case "LT": s.LT = Math.Max(s.LT, SdlTrigger(src)); break;
+                case "RT": s.RT = Math.Max(s.RT, SdlTrigger(src)); break;
+                default: if (SdlPressed(src)) s.Buttons |= Bit(target); break;
+            }
+        }
+    }
+
+    /// <summary>SDL の軸の値を -1..1 にする（半分の軸と反転を含む）。スティックは最初の報告まで中央とみなす。</summary>
+    private double SdlAxis(SdlMapping.Source src)
+    {
+        int code = AxisCode(src.Index);
+        if (code < 0 || !_caps.Abs.Contains(code)) return 0;
+        double v = Unit(code) * 2.0 - 1.0;
+        if (src.Invert) v = -v;
+        return v;
+    }
+
+    private bool SdlPressed(SdlMapping.Source src)
+    {
+        switch (src.Kind)
+        {
+            case 'b':
+                return src.Index >= 0 && src.Index < _sdlKeyOrder.Length && _key[_sdlKeyOrder[src.Index]];
+            case 'h':
+            {
+                int hx = EvCodes.ABS_HAT0X + 2 * src.Index, hy = hx + 1;
+                if (hy >= EvCodes.ABS_CNT) return false;
+                int x = _abs[hx], y = _abs[hy];
+                return ((src.HatMask & 1) != 0 && y < 0) || ((src.HatMask & 2) != 0 && x > 0)
+                    || ((src.HatMask & 4) != 0 && y > 0) || ((src.HatMask & 8) != 0 && x < 0);
+            }
+            case 'a':
+            {
+                if (!_seenReport) return false;
+                double v = SdlAxis(src);
+                return src.Half < 0 ? v < -0.5 : v > 0.5;
+            }
+        }
+        return false;
+    }
+
+    private short SdlStick(SdlMapping.Source src, bool invertY)
+    {
+        double v;
+        if (src.Kind == 'a')
+        {
+            if (!_seenReport) return 0;
+            v = SdlAxis(src);
+            if (src.Half > 0) v = Math.Max(0, v); else if (src.Half < 0) v = Math.Min(0, v);
+        }
+        else v = SdlPressed(src) ? 1 : 0;
+        if (invertY) v = -v;   // SDL も Linux も下が正。LLMCon（XInput）は上が正
+        return (short)Math.Clamp((int)Math.Round(v * 32767.0), -32768, 32767);
+    }
+
+    private byte SdlTrigger(SdlMapping.Source src)
+    {
+        if (src.Kind != 'a') return SdlPressed(src) ? (byte)255 : (byte)0;
+        double v = SdlAxis(src);                 // -1..1
+        double u = src.Half != 0 ? Math.Max(0, src.Half * v) : (v + 1) / 2;   // 0..1
+        return (byte)Math.Clamp((int)Math.Round(u * 255.0), 0, 255);
     }
 
     /// <summary>ジョイスティックのボタンの番号を、Windows の素の HID と同じ通し番号にする。BTN_JOYSTICK を 0 とする。</summary>

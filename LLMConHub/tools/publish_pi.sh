@@ -19,6 +19,6 @@ if [ -n "${1:-}" ]; then
   DEST="$1"
   ssh "$DEST" 'mkdir -p ~/llmconhub'
   rsync -av "$OUT/" "$DEST:llmconhub/"
-  rsync -av bridge pi tools profile.json "$DEST:llmconhub/"
+  rsync -av bridge pi tools profile.json gamecontrollerdb.txt third_party "$DEST:llmconhub/"
   echo "写しました：$DEST:~/llmconhub"
 fi
