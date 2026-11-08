@@ -18,7 +18,7 @@ public sealed class WebController
     private readonly object _lock = new();
     private string _current;
     private string _previous;
-    private readonly ConcurrentDictionary<Guid, WebSocket> _sockets = new();
+    private readonly ConcurrentDictionary<Guid, Client> _clients = new();
 
     public WebController()
     {
@@ -38,23 +38,148 @@ public sealed class WebController
     public void Reset() { lock (_lock) { _previous = _current; _current = DefaultDesign; } }
     public void RevertPrevious() { lock (_lock) { (_current, _previous) = (_previous, _current); } }
 
-    public Guid Register(WebSocket s) { var id = Guid.NewGuid(); _sockets[id] = s; return id; }
-    public void Unregister(Guid id) { _sockets.TryRemove(id, out _); }
+    /// <summary>
+    /// 1回の送信がこの時間を超えて終わらない接続は、止まったものと判断して切る（提案E1、2026-11-09）。
+    /// 受信を読み出さない接続があると、相手と自分の送信の溜まり場が満杯になり、送信が終わらなくなるからである。
+    /// </summary>
+    public static TimeSpan SendTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>順に送る合図（reload など）を、1つの接続あたり何件まで溜めるか。超えたら、その接続を切る。</summary>
+    public const int MaxQueuedMessages = 256;
+
+    public Guid Register(WebSocket s)
+    {
+        var id = Guid.NewGuid();
+        var c = new Client(s);
+        _clients[id] = c;
+        c.Start();
+        return id;
+    }
+
+    public void Unregister(Guid id)
+    {
+        if (_clients.TryRemove(id, out var c)) c.Stop();
+    }
+
+    /// <summary>いまつながっている接続の数（試験と状態の表示に使う）。</summary>
+    public int ClientCount => _clients.Count;
 
     public async Task BroadcastReloadAsync() => await BroadcastTextAsync("reload");
 
-    /// <summary>つながっている全ページへテキストを送る（マイクのレベル表示などの状態配信に使う）。</summary>
-    public async Task BroadcastTextAsync(string text)
+    /// <summary>
+    /// つながっている全ページへテキストを送る。捨ててはならない合図（reload など）に使う。
+    /// 接続ごとの待ち行列に入れるだけで、送信の完了は待たない。1つの接続が詰まっても、ほかの接続と呼び出し側は止まらない。
+    /// </summary>
+    public Task BroadcastTextAsync(string text)
     {
-        var data = Encoding.UTF8.GetBytes(text);
-        foreach (var kv in _sockets)
+        foreach (var kv in _clients) kv.Value.Enqueue(text);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// つながっている全ページへ、種別 key の最新の値だけを送る。パッドの出力やマイクのレベルのように、
+    /// 新しい値が届けば古い値が不要になるものに使う。送れていない古い値は、新しい値で置き換えて捨てる。
+    /// </summary>
+    public void BroadcastLatest(string key, string text)
+    {
+        foreach (var kv in _clients) kv.Value.SetLatest(key, text);
+    }
+
+    /// <summary>
+    /// 1つの接続への送信を受け持つ。接続ごとに専用の送信の処理を1つ立て、送信を直列にする
+    /// （WebSocket は同時に1つの送信しか受け付けない）。
+    /// </summary>
+    private sealed class Client
+    {
+        private readonly WebSocket _ws;
+        private readonly object _gate = new();
+        private readonly System.Collections.Generic.Queue<string> _queue = new();
+        private readonly System.Collections.Generic.Dictionary<string, string> _latest = new();
+        private readonly System.Collections.Generic.List<string> _latestOrder = new();
+        private readonly SemaphoreSlim _signal = new(0, int.MaxValue);
+        private readonly CancellationTokenSource _stop = new();
+        private int _pending;   // 0 = 合図を出していない、1 = 出した
+
+        public Client(WebSocket ws) => _ws = ws;
+
+        public void Start() => _ = Task.Run(LoopAsync);
+
+        public void Stop()
         {
-            var s = kv.Value;
-            if (s.State == WebSocketState.Open)
+            try { _stop.Cancel(); } catch { }
+            Kick();
+        }
+
+        public void Enqueue(string text)
+        {
+            bool overflow;
+            lock (_gate)
             {
-                try { await s.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None); }
-                catch { /* ignore broken sockets */ }
+                overflow = _queue.Count >= MaxQueuedMessages;
+                if (!overflow) _queue.Enqueue(text);
             }
+            if (overflow) { Abort(); return; }
+            Kick();
+        }
+
+        public void SetLatest(string key, string text)
+        {
+            lock (_gate)
+            {
+                if (!_latest.ContainsKey(key)) _latestOrder.Add(key);
+                _latest[key] = text;
+            }
+            Kick();
+        }
+
+        private void Kick()
+        {
+            if (Interlocked.CompareExchange(ref _pending, 1, 0) == 0) _signal.Release();
+        }
+
+        private bool TryTake(out string? text)
+        {
+            lock (_gate)
+            {
+                if (_queue.Count > 0) { text = _queue.Dequeue(); return true; }
+                if (_latestOrder.Count > 0)
+                {
+                    var key = _latestOrder[0];
+                    _latestOrder.RemoveAt(0);
+                    text = _latest[key];
+                    _latest.Remove(key);
+                    return true;
+                }
+            }
+            text = null;
+            return false;
+        }
+
+        private async Task LoopAsync()
+        {
+            try
+            {
+                while (!_stop.IsCancellationRequested)
+                {
+                    await _signal.WaitAsync(_stop.Token).ConfigureAwait(false);
+                    Volatile.Write(ref _pending, 0);
+                    while (TryTake(out var text))
+                    {
+                        if (_ws.State != WebSocketState.Open) return;
+                        var data = Encoding.UTF8.GetBytes(text!);
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                        cts.CancelAfter(SendTimeout);
+                        // 時間切れで取り消すと、WebSocket は中断の状態になる。受信の側の処理が例外で抜け、Unregister が呼ばれる。
+                        await _ws.SendAsync(data, WebSocketMessageType.Text, true, cts.Token).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch { Abort(); }
+        }
+
+        private void Abort()
+        {
+            try { _ws.Abort(); } catch { }
         }
     }
 

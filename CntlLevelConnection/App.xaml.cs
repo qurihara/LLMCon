@@ -172,7 +172,7 @@ public partial class App : Application
         micTimer.Tick += (_, _) =>
         {
             if (Mic.Enabled)
-                _ = Web.BroadcastTextAsync($"{{\"t\":\"miclvl\",\"v\":{Mic.Level:F4}}}");
+                Web.BroadcastLatest("miclvl", $"{{\"t\":\"miclvl\",\"v\":{Mic.Level:F4}}}");
         };
         micTimer.Start();
 

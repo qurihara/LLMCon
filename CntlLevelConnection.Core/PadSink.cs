@@ -64,7 +64,6 @@ public sealed class WebSocketSink : IPadSink
     private bool _hasLast;
     private long _lastSendTicks;
     private long _lastAnyTicks;
-    private int _sending;   // 0 = 送信していない、1 = 送信中
 
     private static readonly long MinIntervalTicks = System.Diagnostics.Stopwatch.Frequency / 60;   // 毎秒60回まで
     private static readonly long HeartbeatTicks = System.Diagnostics.Stopwatch.Frequency;          // 1秒ごとの生存の合図
@@ -85,16 +84,11 @@ public sealed class WebSocketSink : IPadSink
         if (!changed && now - _lastAnyTicks < HeartbeatTicks) return;      // 変化が無く、合図の時刻でもない
         if (changed && now - _lastSendTicks < MinIntervalTicks) return;    // 変化はあるが、上限の頻度を超える
 
-        // 直前の送信がまだ終わっていなければ、この周回は見送る（ループを詰まらせないため）。
-        // このとき _last を更新してはならない。更新すると、送っていない状態を「送った」と見なして
-        // しまい、次の周回で変化なしと判断されて、その入力が二度と送られなくなる。
-        if (System.Threading.Interlocked.CompareExchange(ref _sending, 1, 0) != 0) return;
-
+        // 送信は接続ごとの処理が受け持つ。ここでは最新の値を置くだけなので、ループは止まらない（提案E1、2026-11-09）。
+        // 送れなかった古い値は、接続ごとに新しい値で置き換えられる。
         _last = s; _hasLast = true;
         _lastSendTicks = now; _lastAnyTicks = now;
-
-        var json = ToJson(s);
-        _ = _web.BroadcastTextAsync(json).ContinueWith(_ => System.Threading.Volatile.Write(ref _sending, 0));
+        _web.BroadcastLatest("pad", ToJson(s));
     }
 
     private static bool Same(in PadState a, in PadState b)
