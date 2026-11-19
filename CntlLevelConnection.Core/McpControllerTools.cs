@@ -49,6 +49,51 @@ public sealed class McpControllerTools(ControllerEngine engine, MacroEngine macr
             $"{(p.Id == sel ? "* " : "  ")}[{i}] {p.Name}\n      id=\"{p.Id}\""));
     }
 
+    [McpServerTool(Name = "pad_setup_start")]
+    [Description("Start working out the button layout of the selected physical pad by asking the player to press buttons BY POSITION " +
+                 "(arcade sticks have no A/B labels on the top panel). kind is \"arcade\" (8 buttons in two rows of four, plus a lever) or " +
+                 "\"pad\" (a two-handed gamepad). Returns the first instruction (in Japanese): tell it to the player as it is, then call " +
+                 "pad_setup_next, which waits for the press. Use this only for pads that list_pads/get_pad_raw show as not mapped correctly " +
+                 "(most pads are mapped automatically from the SDL controller database or the profile).")]
+    public string PadSetupStart([Description("arcade or pad")] string kind)
+    {
+        if (!engine.HasPadSource) return "this platform has no physical pad support";
+        if (engine.SelectedPadId == null) return "物理のパッドを選んでいません。先に select_pad で選んでください。";
+        var s = PadSetup.Create(kind);
+        if (s == null) return "kind は arcade か pad を渡してください。";
+        engine.PadSetup = s;
+        return $"手順を始めます（{s.Steps.Count} 個）。プレイヤに次のように伝えてから pad_setup_next を呼んでください。\n1/{s.Steps.Count}：{s.Current!.Prompt}";
+    }
+
+    [McpServerTool(Name = "pad_setup_next")]
+    [Description("Wait (up to timeoutSec) for the player to press what the last instruction asked, record it, and return the next " +
+                 "instruction to tell the player. If nothing is pressed in time the step is skipped (fine for buttons the pad does not have). " +
+                 "When all steps are done, call pad_setup_finish.")]
+    public string PadSetupNext([Description("seconds to wait for the press")] int timeoutSec = 10)
+    {
+        var s = engine.PadSetup;
+        if (s == null || s.Done) return "進行中の手順がありません。pad_setup_start から始めてください。";
+        var got = s.WaitAndCapture(() => engine.ReadPadRaw(), Math.Clamp(timeoutSec, 1, 60) * 1000);
+        var head = $"記録：{PadSetup.DescribeCaptured(got)}";
+        return s.Done
+            ? head + "\nすべての手順が終わりました。pad_setup_finish を呼んでください。"
+            : head + $"\n次にプレイヤに伝えること（{s.Position + 1}/{s.Steps.Count}）：{s.Current!.Prompt}";
+    }
+
+    [McpServerTool(Name = "pad_setup_finish")]
+    [Description("Build the mapping from what pad_setup recorded and apply it to the selected pad. With save=true it is also written to " +
+                 "the profile so it survives restarts (LLMCon Hub writes profile.json next to the program). Returns the summary.")]
+    public string PadSetupFinish([Description("also save to the profile file")] bool save = true)
+    {
+        var s = engine.PadSetup;
+        if (s == null) return "進行中の手順がありません。";
+        var prof = s.BuildProfile(engine.SelectedPadHardware(), out var notes);
+        var result = engine.ApplyPadProfile(prof, save);
+        engine.PadSetup = null;
+        var lines = s.Results.Select(PadSetup.DescribeCaptured);
+        return result + "\n" + string.Join("\n", lines) + (notes.Count > 0 ? "\n注意：" + string.Join(" ", notes) : "");
+    }
+
     [McpServerTool(Name = "select_pad")]
     [Description("Choose which physical pad to read. Give either the index shown by list_pads (\"0\", \"1\", ...) or " +
                  "the full id. Pass an empty string to read none. Each pad remembers its own axis mapping.")]

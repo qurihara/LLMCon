@@ -63,12 +63,19 @@ public sealed class ProconProtocol
     /// <summary>スティックの中心と、中心から端までの幅（12ビットの値）。SPI のフラッシュの較正の値と揃えてある。</summary>
     public const int StickCenter = 2048, StickRange = 1800;
 
+    /// <summary>
+    /// 共通のボタンのバイトに、いつも立てておく印。本物の有線の Pro コントローラの記録では、充電グリップの印（0x80）が立っていた。
+    /// 環境変数 LLMCONHUB_PROCON_GRIP=0 で立てない（2026-11-04、Steam が USB の初期化を終えた直後に Game Bar が開いた件の切り分けで足した。
+    /// 外しても Game Bar が開く回があったので、原因ではなかった。既定は本物どおり立てる）。
+    /// </summary>
+    public static readonly byte SharedBase = Environment.GetEnvironmentVariable("LLMCONHUB_PROCON_GRIP") == "0" ? (byte)0 : S_ChargingGrip;
+
     /// <summary>LLMCon の状態から、ボタンの3バイトを作る。</summary>
     public static void EncodeButtons(in PadState s, Span<byte> dst, bool byLabel, byte triggerThreshold)
     {
         ushort b = s.Buttons;
         bool Has(ushort bit) => (b & bit) != 0;
-        byte right = 0, shared = S_ChargingGrip, left = 0;
+        byte right = 0, shared = SharedBase, left = 0;
 
         // 顔のボタン。XInput の並び（A が下、B が右、X が左、Y が上）を、Switch の並び（B が下、A が右、Y が左、X が上）へ。
         bool xa = Has(0x1000), xb = Has(0x2000), xx = Has(0x4000), xy = Has(0x8000);

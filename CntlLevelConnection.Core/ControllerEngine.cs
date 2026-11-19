@@ -280,6 +280,15 @@ public sealed class ControllerEngine : IDisposable
 
     public string? SelectedPadId => _padSource?.SelectedId;
 
+    /// <summary>いま選んでいるパッドの素性（製造元、製品、名前）。</summary>
+    public PadHardware? SelectedPadHardware() => _padSource?.SelectedHardware();
+
+    /// <summary>いま選んでいるパッドに、機体ごとの割り当てを当てる（pad_setup_finish が使う）。</summary>
+    public string ApplyPadProfile(PadProfile profile, bool save) => _padSource?.ApplyPadProfile(profile, save) ?? "物理のパッドを扱えない環境です。";
+
+    /// <summary>進行中の pad_setup の手順。MCP の道具は呼ばれるたびに作られるので、状態はここに置く。</summary>
+    public PadSetup? PadSetup { get; set; }
+
     private IPadHider? _hider;
 
     /// <summary>物理パッドをゲームから隠す仕組みを差し込む（Windows のみ。Issue #12）。</summary>

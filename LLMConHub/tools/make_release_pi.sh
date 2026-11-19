@@ -9,7 +9,7 @@ OUTDIR=${1:-publish}
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 dotnet publish src/LLMConHub.Host/LLMConHub.Host.csproj -c Release -r linux-arm64 --self-contained true -o "$STAGE"
-cp -R bridge pi tools profile.json README.md "$STAGE/"
+cp -R bridge pi tools profile.json gamecontrollerdb.txt third_party README.md "$STAGE/"
 find "$STAGE" -name '__pycache__' -prune -exec rm -rf {} +
 find "$STAGE" -name '*.pdb' -delete
 chmod +x "$STAGE"/pi/*.sh "$STAGE/llmconhub-host"

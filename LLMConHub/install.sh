@@ -47,7 +47,15 @@ else
 fi
 
 mkdir -p "$DEST"
+# すでにある profile.json（pad_setup で保存した割り当てや、手で書き足した項目）は残す。
+# 新しい版の profile.json は profile.json.dist として置く。
+if [ -f "$DEST/profile.json" ]; then cp "$DEST/profile.json" "$TMP/profile.json.keep"; fi
 tar -xzf "$TMP/$ASSET" -C "$DEST"
+if [ -f "$TMP/profile.json.keep" ]; then
+  cp "$DEST/profile.json" "$DEST/profile.json.dist"
+  cp "$TMP/profile.json.keep" "$DEST/profile.json"
+  echo "すでにある profile.json を残しました（新しい版のものは profile.json.dist にあります）。"
+fi
 chown -R "$U:" "$DEST"
 chmod +x "$DEST/llmconhub-host" "$DEST"/pi/*.sh
 

@@ -117,6 +117,11 @@ if (pad != null)
 {
     var id = padSpec!.Contains('=') ? padSpec.Split('=', 2)[1].Trim() : "auto";
     engine.UsePadProfiles(opts.Pads);   // プロファイルの機体ごとの割り当て（--profile）
+    // SDL のコントローラの対応表（実行ファイルの隣の gamecontrollerdb.txt）。プロファイルに無い機体に当てる
+    var sdlDb = SdlGameControllerDb.Load(Path.Combine(AppContext.BaseDirectory, "gamecontrollerdb.txt"));
+    pad?.UseSdlDb(sdlDb);
+    if (pad != null) pad.ProfilePath = Path.Combine(AppContext.BaseDirectory, "profile.json");
+    Console.WriteLine($"  controller db  : SDL の対応表 {sdlDb.Count} 件（Linux）");
     engine.SelectPad(id);
     if (pad.SelectedId != null) Console.WriteLine($"  physical pad   : /dev/input/{pad.SelectedId}");
     else Console.Error.WriteLine($"注意: 物理のパッドを開けませんでした：{pad.LastError}");
