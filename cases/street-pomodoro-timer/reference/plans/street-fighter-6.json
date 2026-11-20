@@ -1,0 +1,496 @@
+{
+ "title": "Street Fighter 6",
+ "title_ja": "ストリートファイター6",
+ "notes_ja": "1. ゲームの概要\n2D対戦格闘ゲーム。1対1で戦い、相手の体力を0にすればラウンドを取る。CPU戦、オンライン対戦、World Tour（一人用の冒険モード）がある。対戦ルールの例：1ラウンド99秒で、2ラウンド先取（大会ルールの例で、ゲームの初期設定かは未確認）。1試合はおよそ2〜5分。\n\n2. 操作（研究室の実機設定：Classic、6ボタン）\n- 移動・ジャンプ・しゃがみ：十字キーか左スティック。ガードは相手と逆の方向に入れ続ける（押しっぱなし）。\n- 攻撃：X 弱P、Y 中P、RB 強P、A 弱K、B 中K、RT 強K。\n- 同時押し：X+A 投げ、Y+B ドライブパリィ（押している間だけ続く）、RB+RT ドライブインパクト。\n- Web記事には、初期設定では LT にパリィ、LB にインパクトが割り当てられているとある。実機は同時押しの設定なので、そちらに従う。\n- タイミングが要る操作：必殺技のコマンド入力（波動拳など）、連続技、パリィ。ダッシュは方向キーを2回入れるが、確認していない。\n\n3. 中心となる操作\n- 必須：方向入力（移動とガード）、攻撃6ボタン。\n- 補助：投げ、パリィ、インパクトの同時押し。\n\n4. やめどき\n- ラウンドの終わりと試合の終わり（リザルト画面）が自然な区切り。\n- Start でメニューを開く。CPU戦では中断やメニューに戻る操作ができる。オンラインでは試合中に止められないので、試合が終わってから抜ける。\n- 進行は自動で保存されるようだが、確認していない。\n- Start と試合終了後のメニュー操作は決して妨げない。\n\n5. 出典\n- https://dexerto.com/street-fighter/how-to-use-classic-controls-street-fighter-6-2157378\n- https://seekingtech.com/xbox-elite-wireless-controller-series-2-settings-for-street-fighter-6/\n- https://www.start.gg/tournament/level-up-22-2/event/street-fighter-6/overview/rules\n- https://help.playvs.com/en/articles/9689490-street-fighter-6-match-instructions\n- llmcon-cases sf6/scenarios/sf6_handicap.json（研究室の実機設定、2026-10）",
+ "urls": [
+  "https://dexerto.com/street-fighter/how-to-use-classic-controls-street-fighter-6-2157378",
+  "https://help.playvs.com/en/articles/9689490-street-fighter-6-match-instructions",
+  "https://seekingtech.com/xbox-elite-wireless-controller-series-2-settings-for-street-fighter-6/",
+  "https://www.start.gg/tournament/level-up-22-2/event/street-fighter-6/overview/rules"
+ ],
+ "plan": {
+  "controls_summary_ja": "十字キーか左スティックで移動・ジャンプ・しゃがみ（相手と逆方向でガード）、X/Y/RBが弱・中・強パンチ、A/B/RTが弱・中・強キックで、弱同士で投げ、中同士でドライブパリィ、強同士でドライブインパクトです。",
+  "stop_hint_ja": "ラウンドの終わりか試合後のリザルト画面がやめどきなので、CPU戦ならStartでメニューを開いて抜け、オンラインならこの試合が終わってから抜けてください。",
+  "levels": [
+   {
+    "level": 1,
+    "name_ja": "軽度",
+    "options": [
+     {
+      "label_ja": "弱パンチ封印",
+      "rules": [
+       {
+        "op": "disable",
+        "button": "X"
+       }
+      ],
+      "rules_ja": [
+       "X を無効"
+      ],
+      "targets": [
+       "X"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "弱パンチが出なくなり、投げも出せなくなる",
+      "why_ja": "小技の暴れや刻みを封じられても、ほかの技で十分に戦えるから。"
+     },
+     {
+      "label_ja": "ちょい遅延",
+      "rules": [
+       {
+        "op": "delay",
+        "delayMs": 50
+       }
+      ],
+      "rules_ja": [
+       "入力を 50 ミリ秒遅延"
+      ],
+      "targets": [
+       "X",
+       "Y",
+       "RB",
+       "A",
+       "B",
+       "RT"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "技がほんの少し遅れて出る気がする",
+      "why_ja": "フレーム単位の勝負なので、わずかな遅れでも連続技の手応えが変わるから。"
+     },
+     {
+      "label_ja": "重い強キック",
+      "rules": [
+       {
+        "op": "deadzone",
+        "axis": "RT",
+        "amount": 0.8
+       }
+      ],
+      "rules_ja": [
+       "RT の遊びを 0.8"
+      ],
+      "targets": [
+       "RT"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "強キックは引き金を深く引き切らないと出ない",
+      "why_ja": "大技の強キックを確定反撃で出し遅れる、格闘ゲームらしい小さな失敗が起きるから。"
+     },
+     {
+      "label_ja": "レバー少しズレ",
+      "rules": [
+       {
+        "op": "rotate",
+        "axis": "LS",
+        "amount": 20.0
+       }
+      ],
+      "rules_ja": [
+       "LS を 20 度回転"
+      ],
+      "targets": [
+       "LS"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "スティックの斜めが少しずれ、波動拳が時々化ける",
+      "why_ja": "必殺技のコマンド入力がこのゲームの腕の見せどころだから。"
+     }
+    ]
+   },
+   {
+    "level": 2,
+    "name_ja": "中度",
+    "options": [
+     {
+      "label_ja": "中パンチ封印",
+      "rules": [
+       {
+        "op": "disable",
+        "button": "Y"
+       }
+      ],
+      "rules_ja": [
+       "Y を無効"
+      ],
+      "targets": [
+       "Y"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "中パンチが出ず、ドライブパリィも使えない",
+      "why_ja": "牽制の中パンチと守りの要のパリィを同時に失い、立ち回りが苦しくなるから。"
+     },
+     {
+      "label_ja": "強パンチ気まぐれ",
+      "rules": [
+       {
+        "op": "disable",
+        "button": "RB"
+       }
+      ],
+      "rules_ja": [
+       "RB を無効"
+      ],
+      "targets": [
+       "RB"
+      ],
+      "pulse_on_sec": 4.0,
+      "pulse_off_sec": 4.0,
+      "explain_ja": "強パンチとドライブインパクトが時々出なくなる",
+      "why_ja": "コンボの締めや確定反撃に頼る強攻撃が、肝心なときに空振りするから。"
+     },
+     {
+      "label_ja": "入力遅延",
+      "rules": [
+       {
+        "op": "delay",
+        "delayMs": 120
+       }
+      ],
+      "rules_ja": [
+       "入力を 120 ミリ秒遅延"
+      ],
+      "targets": [
+       "LS",
+       "X",
+       "Y",
+       "RB",
+       "A",
+       "B",
+       "RT"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "操作が目に見えて遅れ、対空や反撃が間に合わない",
+      "why_ja": "反応速度の勝負である格闘ゲームでは、遅延がそのまま不利になるから。"
+     },
+     {
+      "label_ja": "重いレバー",
+      "rules": [
+       {
+        "op": "rate",
+        "axis": "LS",
+        "amount": 4.0
+       }
+      ],
+      "rules_ja": [
+       "LS の変化を毎秒 4.0 まで"
+      ],
+      "targets": [
+       "LS"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "スティックが重く、コマンドもガードも一歩遅れる",
+      "why_ja": "素早い方向入力の切り替えが、必殺技とガードの両方に欠かせないから。"
+     }
+    ]
+   },
+   {
+    "level": 3,
+    "name_ja": "強度",
+    "options": [
+     {
+      "label_ja": "弱強パンチ入替",
+      "rules": [
+       {
+        "op": "remap",
+        "from": "X",
+        "to": "RB"
+       },
+       {
+        "op": "remap",
+        "from": "RB",
+        "to": "X"
+       }
+      ],
+      "rules_ja": [
+       "X を RB に",
+       "RB を X に"
+      ],
+      "targets": [
+       "X",
+       "RB"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "弱パンチと強パンチが入れ替わり、連続技がめちゃくちゃになる",
+      "why_ja": "指が覚えたコンボのボタン順が崩れ、思わず笑ってしまうから。"
+     },
+     {
+      "label_ja": "時々左右逆",
+      "rules": [
+       {
+        "op": "invert",
+        "axis": "LX"
+       }
+      ],
+      "rules_ja": [
+       "LX の軸を反転"
+      ],
+      "targets": [
+       "LS"
+      ],
+      "pulse_on_sec": 5.0,
+      "pulse_off_sec": 10.0,
+      "explain_ja": "時々スティックの左右が逆になり、ガードしたつもりで前に歩く",
+      "why_ja": "相手と逆方向に入れるガードが、このゲームの守りのすべてだから。"
+     },
+     {
+      "label_ja": "大遅延",
+      "rules": [
+       {
+        "op": "delay",
+        "delayMs": 200
+       }
+      ],
+      "rules_ja": [
+       "入力を 200 ミリ秒遅延"
+      ],
+      "targets": [
+       "LS",
+       "X",
+       "Y",
+       "RB",
+       "A",
+       "B",
+       "RT"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "何をしても遅れて出て、読み合いがほぼ成り立たない",
+      "why_ja": "目押しも差し返しも効かなくなり、今のラウンドを終えるのが精一杯になるから。"
+     },
+     {
+      "label_ja": "中キック封印",
+      "rules": [
+       {
+        "op": "disable",
+        "button": "B"
+       }
+      ],
+      "rules_ja": [
+       "B を無効"
+      ],
+      "targets": [
+       "B"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "中キックが出ず、ドライブパリィも使えない",
+      "why_ja": "しゃがみ中キックからのキャンセルという基本の攻め筋が消えるから。"
+     },
+     {
+      "label_ja": "強キック封印",
+      "rules": [
+       {
+        "op": "clamp",
+        "axis": "RT",
+        "amount": 0.0
+       }
+      ],
+      "rules_ja": [
+       "RT の振れ幅を 0.0 まで"
+      ],
+      "targets": [
+       "RT"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "強キックが出ず、ドライブインパクトも使えない",
+      "why_ja": "足払いや大技、インパクト返しといった強力な選択肢がまとめて消えるから。"
+     }
+    ]
+   },
+   {
+    "level": 4,
+    "name_ja": "最強度",
+    "options": [
+     {
+      "label_ja": "パリィ暴発",
+      "rules": [
+       {
+        "op": "invert",
+        "button": "Y"
+       }
+      ],
+      "rules_ja": [
+       "Y を反転"
+      ],
+      "targets": [
+       "Y",
+       "B"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "中パンチが押しっぱなし扱いになり、中キックがすべてパリィに化ける",
+      "why_ja": "ドライブゲージが勝手に減り続け、攻めも守りも崩れるから。"
+     },
+     {
+      "label_ja": "レバー縦横入替",
+      "rules": [
+       {
+        "op": "swap",
+        "axis": "LS"
+       }
+      ],
+      "rules_ja": [
+       "LS の縦と横を入れ替え"
+      ],
+      "targets": [
+       "LS"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "スティックの上下と左右が入れ替わり、歩くとジャンプする",
+      "why_ja": "移動もガードもコマンドもすべて方向入力に頼るこのゲームでは致命的だから。"
+     },
+     {
+      "label_ja": "超遅延",
+      "rules": [
+       {
+        "op": "delay",
+        "delayMs": 350
+       }
+      ],
+      "rules_ja": [
+       "入力を 350 ミリ秒遅延"
+      ],
+      "targets": [
+       "LS",
+       "X",
+       "Y",
+       "RB",
+       "A",
+       "B",
+       "RT"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "操作が三分の一秒以上遅れ、もはや見てから何もできない",
+      "why_ja": "反応と読み合いのゲームが、ただの予約入力の当てずっぽうになるから。"
+     },
+     {
+      "label_ja": "前後移動封印",
+      "rules": [
+       {
+        "op": "clamp",
+        "axis": "LX",
+        "amount": 0.0
+       },
+       {
+        "op": "disable",
+        "button": "DLeft"
+       },
+       {
+        "op": "disable",
+        "button": "DRight"
+       }
+      ],
+      "rules_ja": [
+       "LX の振れ幅を 0.0 まで",
+       "DLeft を無効",
+       "DRight を無効"
+      ],
+      "targets": [
+       "LS",
+       "DLeft",
+       "DRight"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "前にも後ろにも動けず、ガードもできない",
+      "why_ja": "後ろ入れガードと間合い調整を失えば、殴られ続けるしかないから。"
+     },
+     {
+      "label_ja": "インパクト暴発",
+      "rules": [
+       {
+        "op": "invert",
+        "button": "RB"
+       }
+      ],
+      "rules_ja": [
+       "RB を反転"
+      ],
+      "targets": [
+       "RB",
+       "RT"
+      ],
+      "pulse_on_sec": 0,
+      "pulse_off_sec": 0,
+      "explain_ja": "強パンチが押しっぱなし扱いになり、強キックがすべてインパクトに化ける",
+      "why_ja": "大振りのインパクトが暴発し続け、相手に返され放題になるから。"
+     }
+    ]
+   }
+  ],
+  "timeup": {
+   "label_ja": "終了時間です",
+   "rules": [
+    {
+     "op": "delay",
+     "delayMs": 400
+    },
+    {
+     "op": "disable",
+     "button": "X"
+    },
+    {
+     "op": "disable",
+     "button": "Y"
+    },
+    {
+     "op": "disable",
+     "button": "RB"
+    },
+    {
+     "op": "disable",
+     "button": "B"
+    },
+    {
+     "op": "clamp",
+     "axis": "RT",
+     "amount": 0.0
+    },
+    {
+     "op": "rotate",
+     "axis": "LS",
+     "amount": 180.0
+    }
+   ],
+   "rules_ja": [
+    "入力を 400 ミリ秒遅延",
+    "X を無効",
+    "Y を無効",
+    "RB を無効",
+    "B を無効",
+    "RT の振れ幅を 0.0 まで",
+    "LS を 180 度回転"
+   ],
+   "targets": [
+    "X",
+    "Y",
+    "RB",
+    "B",
+    "RT",
+    "LS"
+   ],
+   "pulse_on_sec": 0,
+   "pulse_off_sec": 0,
+   "explain_ja": "弱キック以外の攻撃が出ず、スティックは逆向きで操作も大きく遅れる",
+   "why_ja": "試合はもう続けられないが、Startでメニューを開いて十字キーと決定で抜けられるから。"
+  }
+ },
+ "hints_ja": "栗原研究室の ROG Ally（LLMCon の仮想コントローラ）で使っている割り当て（llmcon-cases の sf6/scenarios/sf6_handicap.json、2026-10）：\n- 操作の型は Classic（6ボタン）。\n- X が弱パンチ、Y が中パンチ、RB が強パンチ、A が弱キック、B が中キック。強キックは RT（引き金）。\n- 移動、ジャンプ、しゃがみ、ガードは十字キーか左スティック。相手と逆の方向でガード。\n- ドライブパリィは中パンチと中キックの同時押し（Y と B）、ドライブインパクトは強パンチと強キックの同時押し（RB と RT）。投げは弱パンチと弱キックの同時押し（X と A）。\n- メニューは Start。",
+ "problems": [],
+ "generated_at": "2026-10-30 23:36",
+ "backend": "claude_cli",
+ "model": "Claude Code の既定のモデル",
+ "seconds": 88.7,
+ "research_seconds": 29.7
+}

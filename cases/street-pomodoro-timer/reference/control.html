@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Street Pomodoro Timer</title>
+<style>
+:root{--bg:#101215;--panel:#1b1f24;--line:#2c323a;--fg:#eef1f4;--sub:#9aa4ae;--work:#7fd3ff;--brk:#ffb347;--red:#ff5c5c;--ok:#5fd18b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;padding:16px}
+main{max-width:640px;margin:0 auto}
+h1{font-size:15px;color:var(--sub);font-weight:600;margin:0 0 12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+#phase{font-size:22px;font-weight:700}
+#time{font-size:min(21vw,120px);font-weight:700;font-variant-numeric:tabular-nums;line-height:1.05;letter-spacing:.02em}
+#sub{color:var(--sub);font-size:14px;margin-top:4px}
+#restrict{color:var(--red);font-weight:600;margin-top:6px;min-height:1.2em}
+[hidden]{display:none!important}
+.paused{display:inline-block;background:var(--red);color:#fff;border-radius:8px;padding:2px 10px;font-size:15px;margin-left:8px;vertical-align:middle}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{font:inherit;font-size:18px;font-weight:600;min-height:56px;border-radius:12px;border:1px solid var(--line);background:#262c33;color:var(--fg);cursor:pointer}
+button:active{transform:scale(.98)}
+button.primary{background:#245b7a;border-color:#2f7aa3}
+button.warn{background:#5a2a2a;border-color:#8a3a3a}
+button:disabled{opacity:.4}
+label{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:16px}
+label:last-of-type{border-bottom:none}
+input[type=number]{width:96px;font:inherit;font-size:18px;padding:8px;border-radius:8px;border:1px solid var(--line);background:#0e1013;color:var(--fg);text-align:right}
+input[type=checkbox]{width:28px;height:28px}
+.note{color:var(--sub);font-size:13px;margin:6px 0 0}
+#msg{min-height:1.3em;color:var(--sub);font-size:14px;margin-top:8px}
+.err{color:var(--red)!important}
+</style>
+</head>
+<body>
+<main>
+<h1>Street Pomodoro Timer <span id="ver"></span></h1>
+
+<div class="card" id="status">
+  <div><span id="phase">接続中…</span><span id="pausedTag" class="paused" hidden>一時停止中</span></div>
+  <div id="time">--:--</div>
+  <div id="sub"></div>
+  <div id="restrict"></div>
+</div>
+
+<div class="card">
+  <div class="btns">
+    <button id="bPause" class="primary">一時停止</button>
+    <button id="bBreak" hidden>休憩を終える</button>
+    <button id="bResetCycle">この回をやり直す</button>
+    <button id="bResetAll">1回目からやり直す</button>
+    <button id="bStop" class="warn">停止</button>
+  </div>
+  <div id="msg"></div>
+</div>
+
+<div class="card">
+  <label>作業の長さ（分）<input type="number" id="cWork" min="0.05" max="240" step="any"></label>
+  <label>休憩の長さ（分）<input type="number" id="cBreak" min="0.05" max="120" step="any"></label>
+  <label>作業の終わりにカジュアルマッチの検索を始める（オンライン）<input type="checkbox" id="cOnline"></label>
+  <label>休憩の終わりから操作を難しくする<input type="checkbox" id="cRestrict"></label>
+  <label>作業の間は SF6 の音量を下げる<input type="checkbox" id="cVolume"></label>
+  <label>作業の間の SF6 の音量（%）<input type="number" id="cVolWork" min="0" max="100" step="5"></label>
+  <button id="bApply" class="primary" style="width:100%;margin-top:10px">設定を反映する</button>
+  <p class="note">設定は次の段階から反映します（作業の長さは次の作業から、休憩の長さは次の休憩から、オンラインは次の準備から）。
+  オンラインを ON にすると、ほかの人との対戦が始まります。ROG Ally の前で対戦できるときだけ ON にしてください。</p>
+</div>
+</main>
+<script>
+const NAMES={work:"作業中",prep:"作業中（対戦の準備）",break:"休憩中",idle:"待機中",stopped:"停止"};
+const COLORS={work:"var(--work)",prep:"var(--work)",break:"var(--brk)"};
+const $=id=>document.getElementById(id);
+let last=null, formTouched=false;
+function fmt(r){if(r==null)return"--:--";r=Math.ceil(r);return String(Math.floor(r/60)).padStart(2,"0")+":"+String(r%60).padStart(2,"0");}
+function say(t,err){$("msg").textContent=t;$("msg").className=err?"err":"";}
+async function post(path,body){
+  try{
+    const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({from:"web "+navigator.platform},body||{}))});
+    const j=await r.json();
+    if(!j.ok){say("できませんでした："+(j.error||r.status),true);return null;}
+    if(j.state)show(j.state);
+    return j;
+  }catch(e){say("つながりません："+e,true);return null;}
+}
+function fill(c){
+  if(formTouched)return;
+  $("cWork").value=c.work_min;$("cBreak").value=c.break_min;$("cOnline").checked=c.allow_online;
+  $("cRestrict").checked=c.restrict;$("cRestrict").disabled=!c.restrict_available;
+  $("cVolume").checked=c.volume;$("cVolume").disabled=!c.volume_available;$("cVolWork").value=c.volume_work;
+}
+function show(s){
+  last=s;
+  $("ver").textContent=s.version;
+  $("phase").textContent=NAMES[s.phase]||s.phase;
+  $("phase").style.color=COLORS[s.phase]||"var(--fg)";
+  const r=s.remaining_sec;
+  $("time").textContent=s.waiting_resume?"休憩中":fmt(r);
+  $("time").style.color=(r!=null&&r<=10&&COLORS[s.phase])?"var(--red)":(COLORS[s.phase]||"var(--fg)");
+  $("pausedTag").hidden=!s.paused;
+  $("bPause").textContent=s.paused?"再開":"一時停止";
+  $("bBreak").hidden=!(s.waiting_resume&&!s.paused);
+  const c=s.config||{};
+  let sub=(s.cycle?s.cycle+"回目　":"")+"作業 "+c.work_min+"分・休憩 "+c.break_min+"分　"+(c.allow_online?"オンライン ON":"オンラインの操作はしない");
+  if(s.last_control)sub+="　最後の操作："+s.last_control.action+"（"+s.last_control.by+"、"+s.last_control.wall+"）";
+  $("sub").textContent=sub;
+  const rs=s.restrict||{};
+  $("restrict").textContent=(rs.active&&rs.level)?("制限 "+(rs.level_ja||"")+"："+((rs.labels||[]).slice(-1)[0]||"")+(rs.suspended?"（いまは外しています）":"")):"";
+  fill(c);
+  const stopped=s.phase==="stopped";
+  ["bPause","bResetCycle","bResetAll","bStop","bApply"].forEach(id=>$(id).disabled=stopped);
+}
+async function tick(){
+  try{const r=await fetch("/state",{cache:"no-store"});show(await r.json());}
+  catch(e){$("phase").textContent="タイマーにつながりません";$("time").textContent="--:--";}
+}
+$("bPause").onclick=()=>{const wasPaused=!!(last&&last.paused);post(wasPaused?"/resume":"/pause").then(j=>j&&say(wasPaused?"再開しました":"一時停止しました"));};
+$("bBreak").onclick=()=>post("/resume").then(j=>j&&say("休憩を終えました"));
+$("bResetCycle").onclick=()=>{if(confirm("この回を作業の始めからやり直しますか？"))post("/reset",{scope:"cycle"}).then(j=>j&&say("この回をやり直しました"));};
+$("bResetAll").onclick=()=>{if(confirm("1回目の作業からやり直しますか？"))post("/reset",{scope:"all"}).then(j=>j&&say("1回目からやり直しました"));};
+$("bStop").onclick=()=>{if(confirm("タイマーを停止しますか？（ROG Ally で起動し直すまで動きません）"))post("/stop").then(j=>j&&say("停止しました"));};
+document.querySelectorAll("input").forEach(el=>el.addEventListener("input",()=>{formTouched=true;}));
+$("bApply").onclick=async()=>{
+  const online=$("cOnline").checked;
+  if(online&&!(last&&last.config&&last.config.allow_online)&&!confirm("オンラインを ON にすると、作業の終わりにほかの人との対戦の検索が始まります。よろしいですか？"))return;
+  const body={work:parseFloat($("cWork").value),break:parseFloat($("cBreak").value),allow_online:online};
+  if(!$("cRestrict").disabled)body.restrict=$("cRestrict").checked;
+  if(!$("cVolume").disabled){body.volume=$("cVolume").checked;body.volume_work=parseFloat($("cVolWork").value);}
+  const j=await post("/config",body);
+  if(j){formTouched=false;fill(j.state.config);say("設定を反映しました（次の段階から）");}
+};
+setInterval(tick,500);tick();
+</script>
+</body>
+</html>

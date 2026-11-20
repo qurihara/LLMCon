@@ -83,6 +83,7 @@ dotnet run --project CntlLevelConnection.Host -- --port 8777 --sink websocket
 | `docs/` | 配布物の説明書と、画面上のコントローラのプリセット一覧 |
 | `tools/mac/` | mac から遠隔で操作し、ブラウザのゲームを自動で動かして測るための道具 |
 | `skills/` | 大規模言語モデル向けの手引き。要求からゲームを選び、規則を書き下し、確かめるまで |
+| `cases/` | 活用事例のプロンプトと参考のコード。大規模言語モデルに読ませて、自分の環境で組み立てる（`cases/street-pomodoro-timer/`） |
 
 ## 使ってよい場面
 

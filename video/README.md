@@ -147,6 +147,10 @@ Raspberry Pi Pico を差し込むだけで使えるコントローラである�
 ゲームと LLMCon とタイマーは、すべて ROG Ally X で動かしている。動画の中の対戦は、オンラインのカジュアルマッチで実際に成立した対戦で、
 相手のプレイヤーの名前と所属の名前、画面の上部の負荷の表示はぼかしている。
 
+自分の環境で使うためのプロンプトと参考のコードを、[`cases/street-pomodoro-timer/`](../cases/street-pomodoro-timer/) に置いている。
+大規模言語モデルのコーディングエージェントに PROMPT.md を読ませると、環境に合わせて組み立てられる。
+カジュアルマッチの検索を自動で始める機能は、ゲームの利用規約での扱いを確かめていないため、既定で切ってある。
+
 ## Jump King の自動攻略（AI が Jump King に挑む）
 
 `jumpking_llmcon_autoplay_v2.mp4` は、LLMCon と大規模言語モデル（Claude）を使って、市販の登山ゲーム「Jump King」（Nexile）を、
